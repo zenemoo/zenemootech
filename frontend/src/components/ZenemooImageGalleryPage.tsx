@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Search,
   Filter,
@@ -11,16 +11,14 @@ import {
   X,
   ExternalLink,
   Sparkles,
-  ShieldCheck,
-  Layers,
   ArrowLeft,
   Calendar,
-  Tag,
   Grid,
   Columns,
   Image as ImageIcon,
   CheckCircle2,
   RefreshCw,
+  Globe,
 } from 'lucide-react';
 import { Navbar } from './Navbar';
 import { Footer } from './Footer';
@@ -53,6 +51,124 @@ interface ZenemooImageGalleryPageProps {
   onNavigateToTeam?: (slug: string) => void;
 }
 
+const ITEMS_PER_PAGE = 12;
+
+/**
+ * Google-Style "Z e n e m o o o o o o" Pagination Component
+ */
+interface GooglePaginationProps {
+  currentPage: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+}
+
+const GooglePagination: React.FC<GooglePaginationProps> = ({
+  currentPage,
+  totalPages,
+  onPageChange,
+}) => {
+  if (totalPages <= 1) return null;
+
+  // Window of up to 10 pages centered on current page
+  const maxPages = 10;
+  let startPage = Math.max(1, currentPage - Math.floor(maxPages / 2));
+  let endPage = startPage + maxPages - 1;
+  if (endPage > totalPages) {
+    endPage = totalPages;
+    startPage = Math.max(1, endPage - maxPages + 1);
+  }
+
+  const pageNumbers: number[] = [];
+  for (let i = startPage; i <= endPage; i++) {
+    pageNumbers.push(i);
+  }
+
+  // Google color cycle for the 'o's: Red, Yellow, Blue, Green
+  const oColors = ['text-[#EA4335]', 'text-[#FBBC05]', 'text-[#4285F4]', 'text-[#34A853]'];
+
+  return (
+    <div className="flex flex-col items-center justify-center pt-12 pb-8 select-none font-sans">
+      <div className="flex items-end justify-center gap-1 sm:gap-2.5">
+        {/* Previous Button */}
+        {currentPage > 1 ? (
+          <button
+            onClick={() => onPageChange(currentPage - 1)}
+            className="flex items-center gap-1 text-[#4285F4] hover:text-[#8ab4f8] hover:underline text-xs sm:text-sm font-medium mr-2 sm:mr-4 cursor-pointer pb-1.5 transition-colors"
+          >
+            <span className="text-base leading-none">&lt;</span>
+            <span className="hidden xs:inline">Previous</span>
+          </button>
+        ) : (
+          <div className="w-8 sm:w-16" />
+        )}
+
+        {/* Wordmark Prefix: "Z e n e m" in authentic Google-inspired colors */}
+        <div className="flex items-end text-3xl sm:text-5xl font-extrabold tracking-tighter pb-4">
+          <span className="text-[#4285F4]">Z</span>
+          <span className="text-[#EA4335]">e</span>
+          <span className="text-[#FBBC05]">n</span>
+          <span className="text-[#4285F4]">e</span>
+          <span className="text-[#34A853]">m</span>
+        </div>
+
+        {/* The 'o's corresponding to each page number */}
+        <div className="flex items-end gap-1 sm:gap-2">
+          {pageNumbers.map((p) => {
+            const isCurrent = p === currentPage;
+            const colorClass = isCurrent ? 'text-[#EA4335]' : oColors[(p - 1) % oColors.length];
+
+            return (
+              <div key={p} className="flex flex-col items-center">
+                <button
+                  onClick={() => onPageChange(p)}
+                  disabled={isCurrent}
+                  className={`text-3xl sm:text-5xl font-extrabold leading-none transition-all ${colorClass} ${
+                    isCurrent
+                      ? 'scale-110 drop-shadow-[0_0_12px_rgba(234,67,53,0.6)] cursor-default'
+                      : 'hover:scale-125 cursor-pointer opacity-80 hover:opacity-100'
+                  }`}
+                  title={`Go to page ${p}`}
+                >
+                  o
+                </button>
+                <button
+                  onClick={() => onPageChange(p)}
+                  disabled={isCurrent}
+                  className={`text-xs sm:text-sm font-mono mt-1 transition-colors ${
+                    isCurrent
+                      ? 'text-white font-bold cursor-default'
+                      : 'text-[#4285F4] hover:text-[#8ab4f8] hover:underline cursor-pointer'
+                  }`}
+                >
+                  {p}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Trailing exclamation / dot */}
+        <div className="text-3xl sm:text-5xl font-extrabold tracking-tighter pb-4 text-[#4285F4]">
+          !
+        </div>
+
+        {/* Next Button */}
+        {currentPage < totalPages ? (
+          <button
+            onClick={() => onPageChange(currentPage + 1)}
+            className="flex items-center gap-1 text-[#4285F4] hover:text-[#8ab4f8] hover:underline text-xs sm:text-sm font-medium ml-2 sm:ml-4 cursor-pointer pb-1.5 transition-colors"
+          >
+            <span className="hidden xs:inline">Next</span>
+            <span className="text-base leading-none">&gt;</span>
+          </button>
+        ) : (
+          <div className="w-8 sm:w-16" />
+        )}
+      </div>
+    </div>
+  );
+};
+
 export const ZenemooImageGalleryPage: React.FC<ZenemooImageGalleryPageProps> = ({
   onBack,
   onOpenAiDrawer,
@@ -64,17 +180,21 @@ export const ZenemooImageGalleryPage: React.FC<ZenemooImageGalleryPageProps> = (
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Filter & Search State
+  // Filter, Search & Layout State
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [layoutMode, setLayoutMode] = useState<'masonry' | 'grid'>('masonry');
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const galleryRef = useRef<HTMLDivElement>(null);
 
   // Lightbox Modal State
   const [activeItem, setActiveItem] = useState<UnifiedGalleryItem | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
 
-  // Load all images (custom posters + opportunities + team members)
+  // Load all images (custom posters + opportunities + team portraits)
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
@@ -101,6 +221,11 @@ export const ZenemooImageGalleryPage: React.FC<ZenemooImageGalleryPageProps> = (
 
     fetchAllMedia();
   }, []);
+
+  // Reset page when category or search query changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedCategory, searchQuery]);
 
   // Unify all images into an optimized, structured gallery collection
   const allMediaItems: UnifiedGalleryItem[] = useMemo(() => {
@@ -150,7 +275,7 @@ export const ZenemooImageGalleryPage: React.FC<ZenemooImageGalleryPageProps> = (
         cdnUrl,
         sourceUrl,
         altText: `${code}${opp.title} — Official Project Poster | Zenemoo`,
-        caption: `Official program opportunity poster for ${opp.title} (${opp.partner_name || 'Zenemoo'}). Work mode: ${opp.work_mode || 'Remote'}.`,
+        caption: `Official project opportunity poster for ${opp.title} (${opp.partner_name || 'Zenemoo'}).`,
         tags: ['Opportunity', opp.partner_name || 'Zenemoo', opp.work_mode || 'Remote', 'AI Project'],
         aspectRatio: '1:1',
         actionUrl: `/opportunity/${opp.id}`,
@@ -223,6 +348,22 @@ export const ZenemooImageGalleryPage: React.FC<ZenemooImageGalleryPageProps> = (
     });
   }, [allMediaItems, selectedCategory, searchQuery]);
 
+  // Paginated items
+  const totalPages = Math.ceil(filteredItems.length / ITEMS_PER_PAGE) || 1;
+  const paginatedItems = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredItems.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredItems, currentPage]);
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    if (galleryRef.current) {
+      galleryRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+      window.scrollTo({ top: 180, behavior: 'smooth' });
+    }
+  };
+
   // Copy CDN link handler
   const handleCopyLink = (url: string) => {
     navigator.clipboard.writeText(url);
@@ -250,7 +391,6 @@ export const ZenemooImageGalleryPage: React.FC<ZenemooImageGalleryPageProps> = (
       document.body.removeChild(link);
       URL.revokeObjectURL(blobUrl);
     } catch (err) {
-      // Fallback: direct window download
       window.open(item.cdnUrl, '_blank');
     } finally {
       setIsDownloading(false);
@@ -259,7 +399,7 @@ export const ZenemooImageGalleryPage: React.FC<ZenemooImageGalleryPageProps> = (
 
   // Google Image SEO & Structured Schema JSON-LD injection
   useEffect(() => {
-    document.title = 'Official Media & Image Gallery — Posters, Badges & AI Assets | Zenemoo';
+    document.title = 'Zenemoo Images — Official Posters, Festival Greetings & Visual Assets';
 
     const setMeta = (nameAttr: string, attrVal: string, content: string) => {
       let element = document.querySelector(`meta[${nameAttr}="${attrVal}"]`);
@@ -274,7 +414,7 @@ export const ZenemooImageGalleryPage: React.FC<ZenemooImageGalleryPageProps> = (
     setMeta(
       'name',
       'description',
-      'Explore official Zenemoo posters, festival banners, government MSME certificates, program opportunities, and executive team media with official high-resolution CDN assets.'
+      'Explore official Zenemoo posters, festival banners, government MSME certificates, program opportunities, and executive team media.'
     );
     setMeta('property', 'og:title', 'Zenemoo Official Media & Image Gallery');
     setMeta(
@@ -285,7 +425,6 @@ export const ZenemooImageGalleryPage: React.FC<ZenemooImageGalleryPageProps> = (
     setMeta('property', 'og:url', 'https://www.zenemoo.in/images');
     setMeta('property', 'og:image', 'https://www.zenemoo.in/assets/logo.png');
 
-    // Canonical Link
     let canonical = document.querySelector('link[rel="canonical"]');
     if (!canonical) {
       canonical = document.createElement('link');
@@ -335,98 +474,49 @@ export const ZenemooImageGalleryPage: React.FC<ZenemooImageGalleryPageProps> = (
   }, [allMediaItems]);
 
   return (
-    <div className="min-h-screen bg-[#05070D] text-slate-100 relative selection:bg-cyan-500/30 selection:text-cyan-200">
+    <div className="min-h-screen bg-[#07090E] text-slate-100 relative selection:bg-cyan-500/30 selection:text-cyan-200">
       <Navbar onBack={onBack} showBackButton={true} onOpenAiDrawer={onOpenAiDrawer} />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-24 space-y-10">
-        {/* ── HERO HEADER BAR ── */}
-        <div className="relative rounded-3xl bg-gradient-to-br from-[#0B101D] via-[#080C16] to-[#04060B] border border-cyan-500/20 p-6 sm:p-10 shadow-2xl overflow-hidden">
-          {/* Subtle Background Glows */}
-          <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
-          <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
-
-          <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-            <div className="space-y-3 max-w-3xl">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-mono font-bold tracking-wider uppercase">
-                <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-                <span>OFFICIAL BRAND & MEDIA DIRECTORY</span>
-              </div>
-              <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-white font-display tracking-tight leading-tight">
-                Zenemoo <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-sky-300 to-purple-400">Image Hub</span>
-              </h1>
-              <p className="text-slate-300 text-sm sm:text-base leading-relaxed">
-                Official graphics, festival banners, government recognitions, project posters, and verified media assets indexed directly from the high-performance Zenemoo CDN.
-              </p>
-            </div>
-
-            {/* Quick Stats Pill */}
-            <div className="flex sm:flex-col items-center sm:items-end justify-between w-full sm:w-auto gap-4 bg-slate-900/60 p-4 rounded-2xl border border-white/5 shrink-0">
-              <div className="text-left sm:text-right">
-                <span className="text-[10px] font-mono uppercase text-slate-400 tracking-wider">Total Indexed Media</span>
-                <p className="text-2xl sm:text-3xl font-extrabold text-cyan-400 font-mono">
-                  {isLoading ? '...' : allMediaItems.length}
-                </p>
-              </div>
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[11px] font-mono">
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span>Google Sitemap Verified</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* ── SEARCH & CATEGORY FILTER BAR (Google Images Style) ── */}
-        <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
-            {/* Search Input */}
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search posters, festival greetings, certifications, career posters..."
-                className="w-full pl-11 pr-4 py-3 bg-[#0B101D] border border-white/10 rounded-2xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all font-sans"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-
-            {/* Layout Toggle */}
-            <div className="flex items-center gap-1 bg-[#0B101D] border border-white/10 p-1 rounded-2xl shrink-0 self-end sm:self-auto">
-              <button
-                onClick={() => setLayoutMode('masonry')}
-                className={`p-2 rounded-xl transition-all cursor-pointer ${
-                  layoutMode === 'masonry'
-                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-                title="Adaptive Flow View"
-              >
-                <Columns className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => setLayoutMode('grid')}
-                className={`p-2 rounded-xl transition-all cursor-pointer ${
-                  layoutMode === 'grid'
-                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-                title="Uniform Grid View"
-              >
-                <Grid className="w-4 h-4" />
-              </button>
-            </div>
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 sm:pt-28 pb-20 space-y-8">
+        {/* ── GOOGLE-STYLE CLEAN MINIMALIST HEADER ── */}
+        <div className="flex flex-col items-center justify-center text-center pt-2 sm:pt-4 space-y-5">
+          {/* Brand Logo & Title */}
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight font-display">
+              <span className="text-[#4285F4]">Z</span>
+              <span className="text-[#EA4335]">e</span>
+              <span className="text-[#FBBC05]">n</span>
+              <span className="text-[#4285F4]">e</span>
+              <span className="text-[#34A853]">m</span>
+              <span className="text-[#EA4335]">o</span>
+              <span className="text-[#4285F4]">o</span>
+              <span className="text-slate-400 font-light text-2xl sm:text-3xl md:text-4xl ml-2">Images</span>
+            </h1>
           </div>
 
-          {/* Category Chips (Google Images Style) */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-white/10">
+          {/* Clean Google Search Box */}
+          <div className="w-full max-w-2xl relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-4 sm:left-5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search Zenemoo posters, festivals, certificates, opportunities..."
+              className="w-full pl-11 sm:pl-12 pr-10 py-3 sm:py-3.5 bg-[#121622] hover:bg-[#151a29] focus:bg-[#151a29] border border-white/10 hover:border-white/20 focus:border-[#4285F4] rounded-full text-sm sm:text-base text-white placeholder-slate-400 shadow-lg shadow-black/40 focus:outline-none focus:ring-2 focus:ring-[#4285F4]/30 transition-all"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-1"
+                title="Clear search"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          {/* Google Images Filter Chips */}
+          <div className="w-full flex items-center justify-start sm:justify-center gap-2 overflow-x-auto pb-2 scrollbar-none px-1">
             {Object.keys(categoryCounts).map((catName) => {
               const count = categoryCounts[catName] || 0;
               const isActive = selectedCategory === catName;
@@ -434,16 +524,16 @@ export const ZenemooImageGalleryPage: React.FC<ZenemooImageGalleryPageProps> = (
                 <button
                   key={catName}
                   onClick={() => setSelectedCategory(catName)}
-                  className={`px-4 py-2 rounded-full text-xs font-mono font-medium transition-all shrink-0 cursor-pointer flex items-center gap-2 border ${
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-mono font-medium transition-all shrink-0 cursor-pointer flex items-center gap-1.5 border ${
                     isActive
-                      ? 'bg-gradient-to-r from-cyan-500/20 to-blue-500/20 text-cyan-300 border-cyan-500/50 shadow-md shadow-cyan-500/10'
-                      : 'bg-[#0B101D] text-slate-400 border-white/10 hover:text-white hover:border-slate-700'
+                      ? 'bg-[#1b263b] text-cyan-300 border-[#4285F4] shadow-sm'
+                      : 'bg-[#0f1420] text-slate-400 border-white/10 hover:text-white hover:border-white/25'
                   }`}
                 >
                   <span>{catName}</span>
                   <span
                     className={`px-1.5 py-0.2 rounded-full text-[10px] ${
-                      isActive ? 'bg-cyan-500/30 text-cyan-200' : 'bg-slate-800 text-slate-400'
+                      isActive ? 'bg-[#4285F4]/30 text-cyan-200' : 'bg-white/5 text-slate-500'
                     }`}
                   >
                     {count}
@@ -452,21 +542,49 @@ export const ZenemooImageGalleryPage: React.FC<ZenemooImageGalleryPageProps> = (
               );
             })}
           </div>
+
+          {/* Results Summary & View Toggles */}
+          <div ref={galleryRef} className="w-full flex items-center justify-between text-xs text-slate-400 font-mono pt-2 border-b border-white/5 pb-3">
+            <span>
+              About <strong className="text-slate-200">{filteredItems.length}</strong> results (Page {currentPage} of {totalPages})
+            </span>
+
+            <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl">
+              <button
+                onClick={() => setLayoutMode('masonry')}
+                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                  layoutMode === 'masonry' ? 'bg-[#4285F4]/20 text-cyan-300' : 'text-slate-400 hover:text-white'
+                }`}
+                title="Masonry View"
+              >
+                <Columns className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => setLayoutMode('grid')}
+                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                  layoutMode === 'grid' ? 'bg-[#4285F4]/20 text-cyan-300' : 'text-slate-400 hover:text-white'
+                }`}
+                title="Grid View"
+              >
+                <Grid className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
         </div>
 
-        {/* ── MEDIA GALLERY SHOWCASE ── */}
+        {/* ── IMAGE GALLERY GRID (Google Images Card Style) ── */}
         {isLoading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
             {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
-              <div key={n} className="bg-[#0B101D] border border-white/5 rounded-2xl h-72 animate-pulse p-4" />
+              <div key={n} className="bg-[#101524] border border-white/5 rounded-2xl h-64 animate-pulse p-4" />
             ))}
           </div>
         ) : filteredItems.length === 0 ? (
-          <div className="rounded-3xl bg-[#0B101D] border border-white/10 p-12 text-center space-y-4">
+          <div className="rounded-3xl bg-[#101524] border border-white/10 p-12 text-center space-y-4">
             <ImageIcon className="w-12 h-12 text-slate-600 mx-auto" />
-            <h3 className="text-xl font-bold text-white font-display">No media found</h3>
+            <h3 className="text-xl font-bold text-white font-display">No images found</h3>
             <p className="text-sm text-slate-400 max-w-md mx-auto">
-              No images matching your current search or category filter. Try selecting &quot;All&quot; or clearing your keywords.
+              Your search - <strong className="text-white">{searchQuery}</strong> - did not match any image records.
             </p>
             <button
               onClick={() => {
@@ -479,91 +597,98 @@ export const ZenemooImageGalleryPage: React.FC<ZenemooImageGalleryPageProps> = (
             </button>
           </div>
         ) : (
-          <div
-            className={
-              layoutMode === 'masonry'
-                ? 'columns-1 sm:columns-2 md:columns-3 lg:columns-4 gap-6 space-y-6'
-                : 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6'
-            }
-          >
-            {filteredItems.map((item) => (
-              <div
-                key={item.id}
-                onClick={() => setActiveItem(item)}
-                className="group relative bg-[#0B101D] rounded-2xl border border-white/10 hover:border-cyan-500/60 overflow-hidden shadow-xl hover:shadow-cyan-500/20 transition-all duration-300 cursor-pointer break-inside-avoid flex flex-col justify-between"
-              >
-                {/* Image Container */}
-                <div className="relative overflow-hidden bg-slate-950/80 flex items-center justify-center min-h-[220px]">
-                  <img
-                    src={item.cdnUrl}
-                    alt={item.altText}
-                    loading="lazy"
-                    className="w-full h-auto object-cover group-hover:scale-105 transition-transform duration-500"
-                    onError={(e) => {
-                      // Seamless fallback to direct Cloudinary source if CDN proxy is cold
-                      const target = e.target as HTMLImageElement;
-                      if (target.src !== item.sourceUrl) {
-                        target.src = item.sourceUrl;
-                      }
-                    }}
-                  />
+          <>
+            <div
+              className={
+                layoutMode === 'masonry'
+                  ? 'columns-2 sm:columns-3 lg:columns-4 gap-4 sm:gap-5 space-y-4 sm:space-y-5'
+                  : 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-5'
+              }
+            >
+              {paginatedItems.map((item) => (
+                <div
+                  key={item.id}
+                  onClick={() => setActiveItem(item)}
+                  className="group relative bg-[#0f1422] hover:bg-[#141b2e] rounded-xl sm:rounded-2xl border border-white/10 hover:border-[#4285F4]/60 overflow-hidden shadow-md hover:shadow-xl hover:shadow-[#4285F4]/15 transition-all duration-300 cursor-pointer break-inside-avoid flex flex-col justify-between"
+                >
+                  {/* Clean Image Container */}
+                  <div className="relative overflow-hidden bg-black/60 flex items-center justify-center min-h-[160px] sm:min-h-[220px]">
+                    <img
+                      src={item.cdnUrl}
+                      alt={item.altText}
+                      loading="lazy"
+                      className="w-full h-auto object-cover group-hover:scale-105 transition-transform duration-500"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        if (target.src !== item.sourceUrl) {
+                          target.src = item.sourceUrl;
+                        }
+                      }}
+                    />
 
-                  {/* Category Pill Tag */}
-                  <div className="absolute top-3 left-3 z-10">
-                    <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider backdrop-blur-md bg-black/60 text-cyan-300 border border-cyan-500/30 shadow-md">
-                      {item.category.replace(' & Greetings', '').replace('Official ', '')}
-                    </span>
-                  </div>
+                    {/* Category pill */}
+                    <div className="absolute top-2 left-2 z-10">
+                      <span className="px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-mono font-medium backdrop-blur-md bg-black/70 text-cyan-300 border border-white/15">
+                        {item.category.replace(' & Greetings', '').replace('Official ', '')}
+                      </span>
+                    </div>
 
-                  {/* Hover Quick View Overlay */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-4">
-                    <div className="w-full space-y-1.5 text-left">
-                      <p className="text-white text-xs font-bold font-sans line-clamp-2 leading-snug drop-shadow-md">
-                        {item.title}
-                      </p>
-                      <div className="flex items-center justify-between text-[11px] font-mono text-cyan-300">
-                        <span className="inline-flex items-center gap-1">
-                          <Eye className="w-3.5 h-3.5" /> Quick View
-                        </span>
-                        <span className="text-slate-400">{item.date}</span>
+                    {/* Quick View overlay icon */}
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <div className="p-2.5 rounded-full bg-black/70 text-white border border-white/20 shadow-lg">
+                        <Maximize2 className="w-4 h-4" />
                       </div>
                     </div>
                   </div>
-                </div>
 
-                {/* Bottom Card Summary */}
-                <div className="p-3.5 bg-[#080C16] border-t border-white/5 space-y-1">
-                  <h4 className="text-xs font-semibold text-slate-200 group-hover:text-cyan-300 transition-colors line-clamp-1">
-                    {item.title}
-                  </h4>
-                  <div className="flex items-center justify-between text-[10px] font-mono text-slate-500">
-                    <span>{item.category}</span>
-                    <span className="text-cyan-400 font-bold">CDN • 200 OK</span>
+                  {/* Clean Google Images Card Footer: Title + Source (zenemoo.in) */}
+                  <div className="p-3 sm:p-3.5 space-y-1">
+                    <h4 className="text-xs sm:text-sm font-medium text-slate-200 group-hover:text-cyan-300 transition-colors line-clamp-1 leading-snug">
+                      {item.title}
+                    </h4>
+                    <div className="flex items-center gap-1.5 text-[10px] sm:text-[11px] text-slate-400">
+                      <Globe className="w-3 h-3 text-slate-500 shrink-0" />
+                      <span className="truncate">zenemoo.in</span>
+                      <span className="text-slate-600">•</span>
+                      <span className="text-slate-500 truncate">{item.date || 'Visual'}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+
+            {/* ── GOOGLE-STYLE "Z E N E M O O O O O O" PAGINATION ── */}
+            <GooglePagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={handlePageChange}
+            />
+          </>
         )}
       </main>
 
-      {/* ── LIGHTBOX ZOOM & DETAILS MODAL (Google Images Style) ── */}
+      {/* ── CLEAN GOOGLE IMAGES PREVIEW MODAL (LIGHTBOX) ── */}
       {activeItem && (
-        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 animate-fade-in">
-          <div className="bg-[#0B101D] border border-cyan-500/40 rounded-3xl w-full max-w-5xl max-h-[92vh] overflow-hidden flex flex-col shadow-2xl shadow-cyan-500/10">
+        <div
+          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 animate-fade-in"
+          onClick={() => setActiveItem(null)}
+        >
+          <div
+            className="bg-[#0e1320] border border-cyan-500/30 rounded-2xl sm:rounded-3xl w-full max-w-5xl max-h-[92vh] overflow-hidden flex flex-col shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             {/* Modal Header */}
-            <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between bg-[#080C16] shrink-0">
-              <div className="flex items-center gap-3">
-                <span className="px-3 py-1 rounded-full text-[10px] font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 uppercase">
-                  {activeItem.category}
-                </span>
-                <span className="text-xs font-mono text-slate-400 hidden sm:inline">
-                  {activeItem.date}
-                </span>
+            <div className="px-5 py-3.5 border-b border-white/10 flex items-center justify-between bg-[#0a0e18] shrink-0">
+              <div className="flex items-center gap-2">
+                <Globe className="w-4 h-4 text-cyan-400" />
+                <span className="text-xs font-mono text-cyan-300 font-bold">zenemoo.in</span>
+                <span className="text-slate-600">•</span>
+                <span className="text-xs font-mono text-slate-400">{activeItem.category}</span>
               </div>
               <button
                 onClick={() => setActiveItem(null)}
                 className="p-1.5 rounded-full hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                title="Close"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -571,12 +696,12 @@ export const ZenemooImageGalleryPage: React.FC<ZenemooImageGalleryPageProps> = (
 
             {/* Modal Content Split View */}
             <div className="flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-12 gap-0">
-              {/* Image Canvas Preview (Left / Top) */}
-              <div className="lg:col-span-7 bg-[#05070D] p-4 sm:p-8 flex items-center justify-center min-h-[300px] sm:min-h-[440px] border-b lg:border-b-0 lg:border-r border-white/10">
+              {/* Image Canvas (Left / Top) */}
+              <div className="lg:col-span-7 bg-[#05070d] p-4 sm:p-8 flex items-center justify-center min-h-[280px] sm:min-h-[420px] border-b lg:border-b-0 lg:border-r border-white/10">
                 <img
                   src={activeItem.cdnUrl}
                   alt={activeItem.altText}
-                  className="max-h-[60vh] max-w-full w-auto object-contain rounded-2xl shadow-2xl"
+                  className="max-h-[62vh] max-w-full w-auto object-contain rounded-xl shadow-2xl"
                   onError={(e) => {
                     const target = e.target as HTMLImageElement;
                     if (target.src !== activeItem.sourceUrl) {
@@ -586,11 +711,11 @@ export const ZenemooImageGalleryPage: React.FC<ZenemooImageGalleryPageProps> = (
                 />
               </div>
 
-              {/* Metadata & Actions Panel (Right / Bottom) */}
-              <div className="lg:col-span-5 p-5 sm:p-6 flex flex-col justify-between space-y-6 bg-[#080C16]/90">
+              {/* Details & Actions Panel (Right / Bottom) */}
+              <div className="lg:col-span-5 p-5 sm:p-6 flex flex-col justify-between space-y-5 bg-[#0a0e18]">
                 <div className="space-y-4">
                   <div>
-                    <h3 className="text-xl sm:text-2xl font-extrabold text-white font-display leading-snug">
+                    <h3 className="text-lg sm:text-xl font-bold text-white font-display leading-snug">
                       {activeItem.title}
                     </h3>
                     <p className="text-xs sm:text-sm text-slate-300 mt-2 leading-relaxed">
@@ -598,41 +723,15 @@ export const ZenemooImageGalleryPage: React.FC<ZenemooImageGalleryPageProps> = (
                     </p>
                   </div>
 
-                  {/* Branded CDN URL Inspector */}
-                  <div className="space-y-2 bg-[#05070D] p-3.5 rounded-2xl border border-white/5">
-                    <div className="flex items-center justify-between text-[11px] font-mono text-slate-400">
-                      <span className="flex items-center gap-1.5 text-cyan-300 font-bold">
-                        <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
-                        <span>Branded Edge CDN URL</span>
-                      </span>
-                      <span className="text-[10px] text-emerald-400">Google Sitemap Active</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        readOnly
-                        value={activeItem.cdnUrl}
-                        className="flex-1 bg-black/50 border border-white/10 px-3 py-1.5 rounded-xl text-xs font-mono text-slate-300 select-all"
-                      />
-                      <button
-                        onClick={() => handleCopyLink(activeItem.cdnUrl)}
-                        className="px-3 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-mono font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0"
-                      >
-                        {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                        <span>{copiedLink ? 'Copied' : 'Copy'}</span>
-                      </button>
-                    </div>
-                  </div>
-
                   {/* Tags */}
                   {activeItem.tags && activeItem.tags.length > 0 && (
                     <div className="space-y-1.5">
-                      <span className="text-[10px] font-mono uppercase text-slate-400 tracking-wider">SEO Keywords</span>
+                      <span className="text-[10px] font-mono uppercase text-slate-500 tracking-wider">Related Keywords</span>
                       <div className="flex flex-wrap gap-1.5">
                         {activeItem.tags.map((tag, idx) => (
                           <span
                             key={idx}
-                            className="px-2.5 py-0.5 rounded-full text-[10px] font-mono bg-slate-800 text-slate-300 border border-white/5"
+                            className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-white/5 text-slate-300 border border-white/5"
                           >
                             #{tag}
                           </span>
@@ -642,16 +741,16 @@ export const ZenemooImageGalleryPage: React.FC<ZenemooImageGalleryPageProps> = (
                   )}
                 </div>
 
-                {/* Action Buttons */}
+                {/* User Action Buttons */}
                 <div className="space-y-2.5 pt-4 border-t border-white/10">
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => handleDownloadImage(activeItem)}
                       disabled={isDownloading}
-                      className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-xs inline-flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 transition-all cursor-pointer"
+                      className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold text-xs inline-flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 transition-all cursor-pointer"
                     >
                       {isDownloading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                      <span>{isDownloading ? 'Downloading...' : 'Download Image'}</span>
+                      <span>{isDownloading ? 'Downloading...' : 'Download'}</span>
                     </button>
                     <button
                       onClick={() => {
@@ -665,15 +764,15 @@ export const ZenemooImageGalleryPage: React.FC<ZenemooImageGalleryPageProps> = (
                           handleCopyLink(activeItem.cdnUrl);
                         }
                       }}
-                      className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-mono inline-flex items-center gap-1.5 border border-white/10 transition-colors cursor-pointer"
+                      className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-200 text-xs font-mono inline-flex items-center gap-1.5 border border-white/10 transition-colors cursor-pointer"
                       title="Share Poster"
                     >
-                      <Share2 className="w-4 h-4" />
-                      <span>Share</span>
+                      {copiedLink ? <Check className="w-4 h-4 text-emerald-400" /> : <Share2 className="w-4 h-4" />}
+                      <span>{copiedLink ? 'Copied' : 'Share'}</span>
                     </button>
                   </div>
 
-                  {/* Deep Link to Opportunity or Team profile if applicable */}
+                  {/* Visit Linked Page */}
                   {activeItem.actionUrl && (
                     <button
                       onClick={() => {
@@ -687,9 +786,9 @@ export const ZenemooImageGalleryPage: React.FC<ZenemooImageGalleryPageProps> = (
                           window.location.href = activeItem.actionUrl!;
                         }
                       }}
-                      className="w-full py-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-cyan-300 border border-cyan-500/30 text-xs font-mono font-bold inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                      className="w-full py-2.5 rounded-xl bg-[#1b263b] hover:bg-[#23324d] text-cyan-300 border border-cyan-500/30 text-xs font-mono font-bold inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                     >
-                      <span>{activeItem.actionLabel || 'Visit Associated Page'}</span>
+                      <span>{activeItem.actionLabel || 'Visit Page'}</span>
                       <ExternalLink className="w-3.5 h-3.5" />
                     </button>
                   )}
