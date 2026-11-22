@@ -93,12 +93,37 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
 💼 Work Mode: ${opportunity.work_mode || 'Remote WFH'}
 ${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` : ''}Apply now on Zenemoo: ${pageUrl}`;
 
+    const cleanId = opportunity.id.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const shareCardUrl = `https://res.cloudinary.com/rwoe0mm9/image/upload/zenemoo/og-previews/zenemoo_opp_card_${cleanId}.png`;
+
     if (navigator.share) {
       try {
-        await navigator.share({
-          title: shareTitle,
-          text: shareText,
-        });
+        let fileShared = false;
+        try {
+          const imgRes = await fetch(shareCardUrl);
+          if (imgRes.ok) {
+            const blob = await imgRes.blob();
+            const file = new File([blob], `${(projectCode || 'zenemoo_opportunity').toLowerCase()}.png`, { type: 'image/png' });
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+              // Pass files + text without `url`. This ensures mobile WhatsApp includes BOTH image and full caption text
+              await navigator.share({
+                files: [file],
+                title: shareTitle,
+                text: shareText,
+              });
+              fileShared = true;
+            }
+          }
+        } catch (fileErr) {
+          console.warn('[Share with image note]:', fileErr);
+        }
+
+        if (!fileShared) {
+          await navigator.share({
+            title: shareTitle,
+            text: shareText,
+          });
+        }
         return;
       } catch (err: any) {
         if (err?.name === 'AbortError') return;
