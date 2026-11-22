@@ -44,6 +44,19 @@
     <priority>0.95</priority>
   </url>
 
+  <!-- 4b. Official Visual Media & Image Repository (Google Ranking Hub) -->
+  <url>
+    <loc>https://www.zenemoo.in/images</loc>
+    <lastmod>2026-11-23</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.95</priority>
+    <image:image>
+      <image:loc>https://www.zenemoo.in/assets/logo.png</image:loc>
+      <image:title>Zenemoo Images — Official Posters, Festival Greetings &amp; Visual Assets</image:title>
+      <image:caption>Official visual directory of Zenemoo AI Data Solutions — Festival posters, announcements, project posters, and team portraits.</image:caption>
+    </image:image>
+  </url>
+
   <!-- 5. Data Team Roster & Executive Directory -->
   <url>
     <loc>https://www.zenemoo.in/team-directory</loc>

@@ -27,6 +27,16 @@
     </image:image>
   </url>
 
+  <!-- 2b. Official Visual Media & Image Gallery Hub -->
+  <url>
+    <loc>https://www.zenemoo.in/images</loc>
+    <image:image>
+      <image:loc>https://www.zenemoo.in/assets/logo.png</image:loc>
+      <image:title>Zenemoo Images — Official Posters, Festival Greetings &amp; Visual Assets</image:title>
+      <image:caption>Official visual repository and image directory of Zenemoo AI Data Solutions.</image:caption>
+    </image:image>
+  </url>
+
   <!-- 3. Dynamic Program Opportunity Posters & Social Cards -->
   <url>
     <loc>https://www.zenemoo.in/opportunity/f3e5db25-97d9-45ee-8ecd-0cd638670979</loc>

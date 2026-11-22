@@ -22,6 +22,10 @@ Allow: /app/
 Allow: /app/android
 Allow: /downloads/
 Allow: /assets/
+Allow: /images
+Allow: /images/
+Allow: /image
+Allow: /image/
 Allow: /cdn/
 Allow: /cdn/*
 Allow: /favicon.ico
@@ -49,6 +53,10 @@ Allow: /app/
 Allow: /app/android
 Allow: /downloads/
 Allow: /assets/
+Allow: /images
+Allow: /images/
+Allow: /image
+Allow: /image/
 Allow: /cdn/
 Allow: /cdn/*
 Allow: /favicon.ico

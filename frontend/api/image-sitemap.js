@@ -114,6 +114,17 @@ export default async function handler(req, res) {
     xml += `    </image:image>\n`;
     xml += `  </url>\n\n`;
 
+    // 2b. Official Visual Media & Image Gallery Hub (Google Image Ranking Hub)
+    xml += `  <!-- 2b. Official Visual Media & Image Gallery Hub -->\n`;
+    xml += `  <url>\n`;
+    xml += `    <loc>https://www.zenemoo.in/images</loc>\n`;
+    xml += `    <image:image>\n`;
+    xml += `      <image:loc>https://www.zenemoo.in/assets/logo.png</image:loc>\n`;
+    xml += `      <image:title>Zenemoo Images — Official Posters, Festival Greetings &amp; Visual Assets</image:title>\n`;
+    xml += `      <image:caption>Official visual repository and image directory of Zenemoo AI Data Solutions.</image:caption>\n`;
+    xml += `    </image:image>\n`;
+    xml += `  </url>\n\n`;
+
     // 3. Dynamic Opportunity Posters & Social Cards
     xml += `  <!-- 3. Dynamic Program Opportunity Posters & Social Cards -->\n`;
     for (const opp of opportunities) {
