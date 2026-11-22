@@ -64,6 +64,12 @@ export const TeamMemberProfilePage: React.FC<TeamMemberProfilePageProps> = ({
           return mSlug === target || mId === target || mEmpId === target;
         });
         setMember(found || null);
+        if (found) {
+          const canonicalSlug = found.slug || getSlugFromName(found.name);
+          if (canonicalSlug && canonicalSlug.toLowerCase() !== target) {
+            window.history.replaceState(null, '', `/team/${canonicalSlug}`);
+          }
+        }
       } catch (err) {
         console.error('Failed to load team member profile:', err);
       } finally {
