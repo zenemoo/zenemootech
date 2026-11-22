@@ -82,8 +82,8 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
   const [submissionError, setSubmissionError] = useState('');
   const [statusModalType, setStatusModalType] = useState<'closed' | 'coming_soon' | null>(null);
 
-  const getShareDetails = () => {
-    if (!opportunity) return { pageUrl: '', shareTitle: '', shareText: '', shareCardUrl: '', projectCode: '' };
+  const handleShareProject = async () => {
+    if (!opportunity) return;
     const pageUrl = window.location.href;
     const projectCode = opportunity.project_code || opportunity.public_id || '';
     const codeTag = projectCode ? ` [${projectCode}]` : '';
@@ -92,43 +92,18 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
 📌 ${opportunity.title} (Partner: ${opportunity.partner_name || 'Zenemoo'})
 💼 Work Mode: ${opportunity.work_mode || 'Remote WFH'}
 ${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` : ''}Apply now on Zenemoo: ${pageUrl}`;
-    const shareCardUrl = `https://zenemootech-api.onrender.com/api/opportunities/${opportunity.id}/og-image`;
-    return { pageUrl, shareTitle, shareText, shareCardUrl, projectCode };
-  };
-
-  const handleShareProject = async () => {
-    if (!opportunity) return;
-    const { pageUrl, shareTitle, shareText, shareCardUrl, projectCode } = getShareDetails();
 
     if (navigator.share) {
       try {
-        let fileShared = false;
-        try {
-          const imgRes = await fetch(shareCardUrl);
-          if (imgRes.ok) {
-            const blob = await imgRes.blob();
-            const file = new File([blob], `${(projectCode || 'zenemoo_opportunity').toLowerCase()}_card.png`, { type: 'image/png' });
-            if (navigator.canShare && navigator.canShare({ files: [file] })) {
-              await navigator.share({
-                title: shareTitle,
-                text: shareText,
-                url: pageUrl,
-                files: [file],
-              });
-              fileShared = true;
-            }
-          }
-        } catch (_) {}
-
-        if (!fileShared) {
-          await navigator.share({
-            title: shareTitle,
-            text: shareText,
-            url: pageUrl,
-          });
-        }
+        await navigator.share({
+          title: shareTitle,
+          text: shareText,
+          url: pageUrl,
+        });
         return;
-      } catch (_) {}
+      } catch (err: any) {
+        if (err?.name === 'AbortError') return;
+      }
     }
 
     try {
@@ -147,13 +122,6 @@ ${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` 
     } catch (e) {
       console.warn('Share copy failed:', e);
     }
-  };
-
-  const handleShareToWhatsApp = () => {
-    const { shareText } = getShareDetails();
-    if (!shareText) return;
-    const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`;
-    window.open(waUrl, '_blank', 'noopener,noreferrer');
   };
 
   useEffect(() => {
@@ -710,22 +678,13 @@ ${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` 
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleDownloadBanner(opportunity.poster_url!, opportunity.title)}
-                      className="w-full py-3 px-3 rounded-2xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 text-[11px] font-mono font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-lg shadow-purple-500/10"
-                    >
-                      <Download className="w-3.5 h-3.5 text-purple-400" /> Poster (HD)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDownloadBanner(`https://zenemootech-api.onrender.com/api/opportunities/${opportunity.id}/og-image`, `${opportunity.title}_Social_Card`)}
-                      className="w-full py-3 px-3 rounded-2xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-[11px] font-mono font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-lg shadow-cyan-500/10"
-                    >
-                      <Download className="w-3.5 h-3.5 text-cyan-400" /> Share Card
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadBanner(opportunity.poster_url!, opportunity.title)}
+                    className="w-full py-3 px-4 rounded-2xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 text-xs font-mono font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-purple-500/10"
+                  >
+                    <Download className="w-4 h-4 text-purple-400" /> Download Banner Poster (HD)
+                  </button>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -741,14 +700,6 @@ ${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` 
                       </div>
                     </div>
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={() => handleDownloadBanner(`https://zenemootech-api.onrender.com/api/opportunities/${opportunity.id}/og-image`, `${opportunity.title}_Social_Card`)}
-                    className="w-full py-3 px-4 rounded-2xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-mono font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-cyan-500/10"
-                  >
-                    <Download className="w-4 h-4 text-cyan-400" /> Download Share Card (HD PNG)
-                  </button>
                 </div>
               )}
 
@@ -1011,41 +962,22 @@ ${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` 
                 </div>
               )}
 
-              {/* SHARE PROJECT OPPORTUNITY BUTTONS */}
-              <div className="space-y-2">
-                <button
-                  type="button"
-                  onClick={handleShareProject}
-                  className="w-full py-3.5 px-5 rounded-2xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-mono font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-cyan-500/10 active:scale-[0.98]"
-                >
-                  {sharedCopied ? (
-                    <>
-                      <Check className="w-4 h-4 text-emerald-400" /> Share Details &amp; Link Copied!
-                    </>
-                  ) : (
-                    <>
-                      <Share2 className="w-4 h-4 text-cyan-400" /> Share Project Opportunity
-                    </>
-                  )}
-                </button>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={handleShareToWhatsApp}
-                    className="py-2.5 px-3 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 text-[11px] font-mono font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-[0.98]"
-                  >
-                    <MessageCircle className="w-3.5 h-3.5 text-emerald-400" /> Share WhatsApp
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDownloadBanner(`https://zenemootech-api.onrender.com/api/opportunities/${opportunity.id}/og-image`, `${opportunity.title}_Social_Card`)}
-                    className="py-2.5 px-3 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 text-[11px] font-mono font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-[0.98]"
-                  >
-                    <Download className="w-3.5 h-3.5 text-cyan-400" /> Save Card
-                  </button>
-                </div>
-              </div>
+              {/* SHARE PROJECT OPPORTUNITY BUTTON (Above Apply button) */}
+              <button
+                type="button"
+                onClick={handleShareProject}
+                className="w-full py-3.5 px-5 rounded-2xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-mono font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-cyan-500/10 active:scale-[0.98]"
+              >
+                {sharedCopied ? (
+                  <>
+                    <Check className="w-4 h-4 text-emerald-400" /> Professional Share Link &amp; Details Copied!
+                  </>
+                ) : (
+                  <>
+                    <Share2 className="w-4 h-4 text-cyan-400" /> Share Project Opportunity
+                  </>
+                )}
+              </button>
 
               {/* APPLY NOW BUTTON AT FULL END */}
               <button
