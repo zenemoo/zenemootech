@@ -83,15 +83,21 @@ async function run() {
     console.warn('⚠️ Could not fetch from API for static sitemap:', err.message);
   }
 
-  // Fallback to local gallery_images.json if API was unreachable during build
-  if (galleryImages.length === 0) {
-    try {
-      const localGalleryPath = path.resolve(__dirname, '../../backend/src/database/gallery_images.json');
-      if (fs.existsSync(localGalleryPath)) {
-        galleryImages = JSON.parse(fs.readFileSync(localGalleryPath, 'utf8'));
+  // Merge with local gallery_images.json to ensure all newly added posters are immediately included
+  try {
+    const localGalleryPath = path.resolve(__dirname, '../../backend/src/database/gallery_images.json');
+    if (fs.existsSync(localGalleryPath)) {
+      const localItems = JSON.parse(fs.readFileSync(localGalleryPath, 'utf8'));
+      if (Array.isArray(localItems)) {
+        const existingUrls = new Set(galleryImages.map((g) => g.image_url || g.cdn_url));
+        localItems.forEach((li) => {
+          if (!existingUrls.has(li.image_url) && !existingUrls.has(li.cdn_url)) {
+            galleryImages.push(li);
+          }
+        });
       }
-    } catch (e) {}
-  }
+    }
+  } catch (e) {}
 
   let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
   xml += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"\n`;

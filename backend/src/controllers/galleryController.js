@@ -95,42 +95,53 @@ export const getGalleryImages = async (req, res) => {
     let isDbSuccess = false;
 
     try {
-      // Primary: try dedicated public.gallery_images table
+      // Primary: query dedicated public.gallery_images table
       const resGallery = await supabaseService.selectAll('gallery_images', 'created_at', false);
-      if (Array.isArray(resGallery)) {
-        dbItems = resGallery;
+      if (Array.isArray(resGallery) && resGallery.length > 0) {
+        dbItems = [...resGallery];
         isDbSuccess = true;
       }
     } catch (e1) {
-      // Fallback: try site_branding table where asset_type starts with gallery_
-      try {
-        const resBranding = await supabaseService.selectAll('site_branding', 'created_at', false);
-        if (Array.isArray(resBranding)) {
-          dbItems = resBranding
-            .filter((r) => r.asset_type === 'gallery_poster' || r.asset_type === 'gallery_image')
-            .map((r) => ({
-              id: r.id,
-              title: r.asset_name || 'Zenemoo Poster',
-              slug: generateSlug(r.asset_name || 'poster'),
-              category: 'Festival & Greetings',
-              image_url: r.cloudinary_secure_url || r.url,
-              cdn_url: toBrandedCdnUrl(r.cloudinary_secure_url || r.url),
-              cloudinary_public_id: r.cloudinary_public_id || '',
-              alt_text: r.alt_text || r.asset_name,
-              caption: r.caption || r.asset_name,
-              tags: ['Zenemoo'],
-              aspect_ratio: '1:1',
-              width: r.width || 1080,
-              height: r.height || 1080,
-              file_size_formatted: r.file_size_formatted || 'N/A',
-              status: r.is_active ? 'active' : 'draft',
-              created_at: r.created_at,
-              updated_at: r.updated_at,
-            }));
+      console.warn('[Gallery] Supabase gallery_images query note:', e1.message);
+    }
+
+    // Secondary / Fallback: query site_branding table for any gallery posters
+    try {
+      const resBranding = await supabaseService.selectAll('site_branding', 'created_at', false);
+      if (Array.isArray(resBranding)) {
+        const brandingPosters = resBranding
+          .filter((r) => r.asset_type === 'gallery_poster' || r.asset_type === 'gallery_image')
+          .map((r) => ({
+            id: r.id,
+            title: r.asset_name || 'Zenemoo Poster',
+            slug: generateSlug(r.asset_name || 'poster'),
+            category: 'Festivals & Greetings',
+            image_url: r.cloudinary_secure_url || r.url,
+            cdn_url: toBrandedCdnUrl(r.cloudinary_secure_url || r.url),
+            cloudinary_public_id: r.cloudinary_public_id || '',
+            alt_text: r.alt_text || r.asset_name,
+            caption: r.caption || r.asset_name,
+            tags: ['Zenemoo', 'Festival'],
+            aspect_ratio: '1:1',
+            width: r.width || 1080,
+            height: r.height || 1080,
+            file_size_formatted: r.file_size_formatted || 'N/A',
+            status: r.is_active ? 'active' : 'draft',
+            created_at: r.created_at,
+            updated_at: r.updated_at,
+          }));
+        if (brandingPosters.length > 0) {
+          // Merge avoiding duplicates by image_url or id
+          const existingUrls = new Set(dbItems.map((d) => d.image_url || d.cdn_url));
+          brandingPosters.forEach((bp) => {
+            if (!existingUrls.has(bp.image_url) && !existingUrls.has(bp.cdn_url)) {
+              dbItems.push(bp);
+            }
+          });
           isDbSuccess = true;
         }
-      } catch (e2) {}
-    }
+      }
+    } catch (e2) {}
 
     // 3. Merge with local persistent file to prevent data loss
     const diskItems = loadDiskGallery();
@@ -242,7 +253,6 @@ export const createGalleryImage = async (req, res) => {
     const aspectRatio = width && height ? (width === height ? '1:1' : width > height ? '16:9' : '4:5') : '1:1';
 
     const newRecord = {
-      id: `poster_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       title,
       slug,
       category,
@@ -261,11 +271,14 @@ export const createGalleryImage = async (req, res) => {
       updated_at: new Date().toISOString(),
     };
 
-    // 1. Try insert into public.gallery_images in Supabase
+    // 1. Try insert into public.gallery_images in Supabase (omit id so Supabase generates UUID)
     try {
       const dbRes = await supabaseService.insert('gallery_images', newRecord);
-      if (dbRes && dbRes.id) newRecord.id = dbRes.id;
+      if (dbRes && dbRes.id) {
+        newRecord.id = dbRes.id;
+      }
     } catch (dbErr) {
+      console.warn('[Gallery] Supabase gallery_images insert failed, trying site_branding fallback:', dbErr.message);
       // 2. Fallback: try inserting into site_branding table
       try {
         const brandingPayload = {
@@ -288,6 +301,11 @@ export const createGalleryImage = async (req, res) => {
       } catch (sbErr) {
         console.warn('[Gallery] Supabase insert note (using disk storage):', sbErr.message);
       }
+    }
+
+    // If no DB id was assigned, use fallback ID for local disk
+    if (!newRecord.id) {
+      newRecord.id = `poster_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     }
 
     // 3. Save to local persistent file
