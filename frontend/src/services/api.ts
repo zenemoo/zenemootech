@@ -318,6 +318,8 @@ export const galleryApi = {
     return api.post<{ success: boolean; message: string; data: GalleryImageItem }>('/gallery', data);
   },
   delete: (id: string) => api.delete<{ success: boolean; message: string }>(`/gallery/${id}`),
+  generateSeo: (data: { title: string; category?: string }) =>
+    api.post<{ success: boolean; message?: string; data: { caption: string; altText: string; tags: string[]; model?: string } }>('/gallery/generate-seo', data),
 };
 
 export interface CompanyPortfolioItem {
@@ -472,6 +474,8 @@ export const adminHrAiApi = {
     existingMessage: string;
     action: string;
   }) => api.post('/admin-hr-ai/modify', data),
+  generateSeo: (data: { title: string; category?: string }) =>
+    api.post<{ success: boolean; message?: string; data: { caption: string; altText: string; tags: string[]; model?: string } }>('/admin-hr-ai/generate-seo', data),
 };
 
 // Zenemoo Brevo Email Engine APIs

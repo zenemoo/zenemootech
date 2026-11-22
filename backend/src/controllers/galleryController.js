@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import { cloudinaryService } from '../services/cloudinaryService.js';
 import { supabaseService } from '../services/supabaseService.js';
 import { toBrandedCdnUrl, toCloudinaryDirectUrl } from '../utils/cdnHelper.js';
+import { generateImageSeoMetadata } from '../services/adminHrAiService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -348,3 +349,25 @@ export const deleteGalleryImage = async (req, res) => {
     return res.status(500).json({ success: false, message: 'Failed to delete poster.' });
   }
 };
+
+/**
+ * POST /api/gallery/generate-seo
+ * Admin: Generate SEO Caption, Alt Text and Tags using Zenemoo AI
+ */
+export const generateGallerySeo = async (req, res) => {
+  try {
+    const { title = '', category = 'Festivals & Greetings' } = req.body;
+    if (!title || !String(title).trim()) {
+      return res.status(400).json({ success: false, message: 'Title is required for SEO generation.' });
+    }
+    const meta = await generateImageSeoMetadata({
+      title: String(title).trim(),
+      category: category ? String(category).trim() : 'Festivals & Greetings',
+    });
+    return res.status(200).json({ success: true, data: meta });
+  } catch (err) {
+    console.error('generateGallerySeo Error:', err);
+    return res.status(500).json({ success: false, message: err.message || 'Failed to generate SEO.' });
+  }
+};
+

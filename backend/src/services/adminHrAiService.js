@@ -258,3 +258,117 @@ Output ONLY the modified ready-to-send message. Do NOT repeat intro conversation
   const replyText = data.choices?.[0]?.message?.content || '';
   return { reply: replyText.trim(), model: usedModel };
 };
+
+/**
+ * Generate Google Image SEO Metadata (Caption, Alt Text, Tags) using Zenemoo Admin AI
+ */
+export const generateImageSeoMetadata = async ({ title = '', category = 'Festivals & Greetings' }) => {
+  const apiKey = (
+    process.env.ADMIN_HR_GROQ_API_KEY ||
+    process.env.GROQ_API_KEY ||
+    process.env.XAI_API_KEY ||
+    ''
+  ).trim();
+
+  const candidateModels = Array.from(new Set([
+    process.env.ADMIN_HR_AI_MODEL,
+    process.env.GROQ_AI_MODEL,
+    'llama-3.3-70b-versatile',
+    'llama-3.1-70b-versatile',
+    'llama3-70b-8192',
+    'llama-3.1-8b-instant',
+  ].filter(Boolean)));
+
+  const endpoint = 'https://api.groq.com/openai/v1/chat/completions';
+
+  const systemPrompt = `You are Zenemoo's Image SEO & Google Search Specialist for Zenemoo (https://www.zenemoo.in/), an Indian AI Data & Multilingual Solutions platform.
+Your task is to generate search-optimized, professional metadata for an image/poster to help it rank high on Google Image Search and Google Web Search under "www.zenemoo.in".
+
+Company context:
+- Company: Zenemoo (formerly QuantumCoders Data Solution)
+- Domain: AI Data Collection, Odia & Indic Speech Datasets, Multilingual Transcription, Voice Over, Annotation, LLM Evaluation
+- Website: https://www.zenemoo.in/
+- Target Keywords: Zenemoo, AI Data Solutions, Indic Languages, Festival Greetings, Odisha, India
+
+CRITICAL FORMAT REQUIREMENT:
+You must respond with valid JSON ONLY. No markdown ticks, no preamble, no commentary.
+JSON Schema:
+{
+  "caption": "A concise, engaging 1-2 sentence description (under 180 characters) explaining what this poster is about, mentioning Zenemoo and its purpose.",
+  "altText": "A natural, keyword-dense Alt Text (6-12 words) perfectly describing the visual for Googlebot-Image and accessibility.",
+  "tags": ["Tag1", "Tag2", "Tag3", "Tag4", "Tag5", "Tag6"]
+}`;
+
+  const userPrompt = `Generate Google Image SEO metadata for this asset:
+Title: "${title}"
+Category: "${category}"
+
+Respond with ONLY valid JSON.`;
+
+  let result = null;
+  let usedModel = candidateModels[0];
+
+  if (apiKey) {
+    for (const modelName of candidateModels) {
+      try {
+        usedModel = modelName;
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: modelName,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt },
+            ],
+            temperature: 0.3,
+            max_tokens: 500,
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const rawContent = data.choices?.[0]?.message?.content || '';
+          const cleanJson = rawContent.replace(/```json/gi, '').replace(/```/g, '').trim();
+          const parsed = JSON.parse(cleanJson);
+          if (parsed && parsed.caption && parsed.altText && Array.isArray(parsed.tags)) {
+            result = parsed;
+            break;
+          }
+        }
+      } catch (e) {
+        console.warn(`[Image SEO AI] Failed with model ${modelName}:`, e.message);
+      }
+    }
+  }
+
+  // High quality deterministic fallback if API is unreachable
+  if (!result) {
+    const isFestival = /festival|diwali|holi|eid|christmas|puja|new year|greeting|independence|republic/i.test(title + ' ' + category);
+    const isMsme = /msme|udyam|gov|certif|badge|legal|register/i.test(title + ' ' + category);
+    
+    let caption = `Official ${title} poster published by Zenemoo AI Data Solutions.`;
+    let altText = `${title} - Zenemoo AI Platform`;
+    let tags = ['Zenemoo', 'AI Technology', 'India'];
+
+    if (isFestival) {
+      caption = `Official celebration and festival greeting poster for ${title} by Zenemoo AI Tech team.`;
+      altText = `${title} Celebration Greetings Zenemoo AI Platform`;
+      tags = [title, 'Zenemoo', 'Festival Greetings', 'Celebration', 'AI Tech India', 'Wishes'];
+    } else if (isMsme) {
+      caption = `Official verified government registration badge and certificate: ${title} under Zenemoo.`;
+      altText = `${title} Official Government Verification Zenemoo`;
+      tags = ['MSME Registered', 'Zenemoo Verification', 'Government of India', 'Official Certificate'];
+    } else {
+      tags = [title, category, 'Zenemoo', 'AI Data Solutions', 'Digital Poster', 'Google Image SEO'];
+    }
+
+    result = { caption, altText, tags };
+  }
+
+  return { ...result, model: usedModel };
+};
+

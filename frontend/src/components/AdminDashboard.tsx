@@ -3430,7 +3430,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
               <h1 className="text-base font-bold font-display text-white tracking-tight flex items-center gap-2 capitalize">
                 {getAdminTabTitle(activeTab)}
               </h1>
-              <p className="text-[10px] font-mono text-slate-500 hidden sm:block">
+              <p className="text-[10px] font-mono text-cyan-400/80 sm:text-slate-400 block truncate max-w-[200px] sm:max-w-none">
                 Zenemoo Platform • Sequential Reordering Engine
               </p>
             </div>
