@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { supabase } from '../config/supabase.js';
 import { ensureOpportunitySheetExists } from '../services/googleSheetsService.js';
 import { sendZenemooNotification } from '../services/pushNotificationEngine.js';
@@ -466,8 +467,15 @@ export const getOpportunityOgImage = async (req, res) => {
     }
 
     const cdnUrl = await getOrGenerateOpportunityOgImageUrl(opp);
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-    return res.redirect(302, cdnUrl);
+    try {
+      const imgRes = await axios.get(cdnUrl, { responseType: 'stream' });
+      res.setHeader('Content-Type', 'image/png');
+      res.setHeader('Cache-Control', 'public, max-age=2592000, immutable');
+      return imgRes.data.pipe(res);
+    } catch (_) {
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      return res.redirect(302, cdnUrl);
+    }
   } catch (err) {
     console.error('getOpportunityOgImage error:', err.message);
     return res.redirect(302, 'https://www.zenemoo.in/assets/logo.png');

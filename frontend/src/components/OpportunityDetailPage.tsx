@@ -98,7 +98,6 @@ ${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` 
         await navigator.share({
           title: shareTitle,
           text: shareText,
-          url: pageUrl,
         });
         return;
       } catch (err: any) {
