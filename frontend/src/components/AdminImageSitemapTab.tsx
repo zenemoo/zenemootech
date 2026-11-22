@@ -46,7 +46,7 @@ interface AdminImageSitemapTabProps {
 // Unified item representation for mixed recent-first display
 interface UnifiedSitemapItem {
   id: string;
-  kind: 'poster' | 'opportunity' | 'team' | 'brand';
+  kind: 'poster' | 'opportunity' | 'team';
   title: string;
   categoryLabel: string;
   cdnUrl: string;
@@ -172,7 +172,7 @@ export const AdminImageSitemapTab: React.FC<AdminImageSitemapTabProps> = ({
   onRefreshOpportunities,
   onRefreshTeam,
 }) => {
-  const [activeSection, setActiveSection] = useState<'all' | 'posters' | 'opportunities' | 'team' | 'brand'>('all');
+  const [activeSection, setActiveSection] = useState<'all' | 'posters' | 'opportunities' | 'team'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'stopped' | 'draft'>('all');
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -406,47 +406,11 @@ export const AdminImageSitemapTab: React.FC<AdminImageSitemapTabProps> = ({
     return teamMembers.filter((m) => !!m.image_url || !!(m as any).image || !!(m as any).photo);
   }, [teamMembers]);
 
-  // Static site brand assets included in image-sitemap.xml
-  const brandAssets = useMemo(() => [
-    {
-      title: 'Zenemoo Official Logo (Primary)',
-      type: 'Brand Identity',
-      pageUrl: 'https://www.zenemoo.in/',
-      cdnUrl: 'https://www.zenemoo.in/assets/logo.png',
-      sourceUrl: 'https://www.zenemoo.in/assets/logo.png',
-      caption: 'Official Brand Logo for Zenemoo (Formerly QuantumCoders Data Solution)',
-    },
-    {
-      title: 'Official UDYAM MSME Registration QR Code',
-      type: 'Govt Verification',
-      pageUrl: 'https://www.zenemoo.in/',
-      cdnUrl: 'https://www.zenemoo.in/assets/udyam-qr.png',
-      sourceUrl: 'https://www.zenemoo.in/assets/udyam-qr.png',
-      caption: 'Zenemoo Official Government MSME Registration Verification QR Code',
-    },
-    {
-      title: 'Zenemoo Opportunities Portal Banner',
-      type: 'Portal Asset',
-      pageUrl: 'https://www.zenemoo.in/opportunities',
-      cdnUrl: 'https://www.zenemoo.in/assets/logo.png',
-      sourceUrl: 'https://www.zenemoo.in/assets/logo.png',
-      caption: 'AI Data Annotation, Audio Recording & Speech Evaluation Project Opportunities',
-    },
-    {
-      title: 'Zenemoo Team Directory Portal Header',
-      type: 'Portal Asset',
-      pageUrl: 'https://www.zenemoo.in/team-directory',
-      cdnUrl: 'https://www.zenemoo.in/assets/logo.png',
-      sourceUrl: 'https://www.zenemoo.in/assets/logo.png',
-      caption: 'Zenemoo Official Team Directory — Specialized AI Language & Data Operations',
-    },
-  ], []);
-
-  // ── UNIFIED MIXED COLLECTION (Recent On Top) ──
+  // ── UNIFIED MIXED COLLECTION (Recent On Top - Strictly Live Admin-Added & Database Assets) ──
   const allUnifiedAssets: UnifiedSitemapItem[] = useMemo(() => {
     const list: UnifiedSitemapItem[] = [];
 
-    // 1. Custom Posters & Festival Banners
+    // 1. Custom Posters & Festival Banners (Added from Admin Panel)
     customPosters.forEach((p) => {
       if (!p || (!p.image_url && !p.cdn_url)) return;
       const cdnUrl = p.cdn_url || toBrandedCdnUrl(p.image_url);
@@ -518,29 +482,11 @@ export const AdminImageSitemapTab: React.FC<AdminImageSitemapTabProps> = ({
       });
     });
 
-    // 4. Core Brand Assets
-    brandAssets.forEach((b, idx) => {
-      list.push({
-        id: `brand_${idx}`,
-        kind: 'brand',
-        title: b.title,
-        categoryLabel: b.type,
-        cdnUrl: b.cdnUrl,
-        sourceUrl: b.sourceUrl,
-        altText: b.caption,
-        caption: b.caption,
-        createdAt: 1680000000000 - idx * 100000,
-        dateFormatted: 'Legal Identity',
-        actionUrl: b.pageUrl,
-        actionLabel: 'View Page',
-      });
-    });
-
     // ── STRICT SORT: WHICH ONE ADD RECENT SHOWS TOP ──
     list.sort((a, b) => b.createdAt - a.createdAt);
 
     return list;
-  }, [customPosters, oppsWithPosters, teamWithPhotos, brandAssets]);
+  }, [customPosters, oppsWithPosters, teamWithPhotos]);
 
   // Filter mixed assets based on selected tab and search query
   const filteredUnifiedAssets = useMemo(() => {
@@ -549,7 +495,6 @@ export const AdminImageSitemapTab: React.FC<AdminImageSitemapTabProps> = ({
       if (activeSection === 'posters' && item.kind !== 'poster') return false;
       if (activeSection === 'opportunities' && item.kind !== 'opportunity') return false;
       if (activeSection === 'team' && item.kind !== 'team') return false;
-      if (activeSection === 'brand' && item.kind !== 'brand') return false;
 
       // 2. Status Filter
       if (statusFilter !== 'all' && item.statusBadge && item.statusBadge !== statusFilter) {
@@ -738,20 +683,6 @@ export const AdminImageSitemapTab: React.FC<AdminImageSitemapTabProps> = ({
               {teamWithPhotos.length}
             </span>
           </button>
-          <button
-            onClick={() => setActiveSection('brand')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold whitespace-nowrap flex items-center gap-1.5 transition-all cursor-pointer ${
-              activeSection === 'brand'
-                ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
-                : 'bg-white/[0.04] text-slate-400 hover:text-white hover:bg-white/[0.08]'
-            }`}
-          >
-            <Globe className="w-3.5 h-3.5" />
-            <span>Brand</span>
-            <span className="ml-0.5 px-1.5 py-0.2 rounded-full text-[10px] bg-black/40">
-              {brandAssets.length}
-            </span>
-          </button>
         </div>
 
         {/* Search Input */}
@@ -845,10 +776,6 @@ export const AdminImageSitemapTab: React.FC<AdminImageSitemapTabProps> = ({
                   kindBadgeClass = 'bg-purple-500/15 text-purple-300 border-purple-500/30';
                   kindIcon = <Users className="w-3 h-3" />;
                   kindName = 'Team Portrait';
-                } else if (item.kind === 'brand') {
-                  kindBadgeClass = 'bg-blue-500/15 text-blue-300 border-blue-500/30';
-                  kindIcon = <Globe className="w-3 h-3" />;
-                  kindName = 'Brand Asset';
                 }
 
                 return (

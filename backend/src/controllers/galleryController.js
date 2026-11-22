@@ -1,14 +1,7 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import { cloudinaryService } from '../services/cloudinaryService.js';
 import { supabaseService } from '../services/supabaseService.js';
 import { toBrandedCdnUrl, toCloudinaryDirectUrl } from '../utils/cdnHelper.js';
 import { generateImageSeoMetadata } from '../services/adminHrAiService.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const PERSISTENT_GALLERY_PATH = path.join(__dirname, '../database/gallery_images.json');
 
 // In-Memory Public Cache (15-Minute TTL for zero Supabase egress on repeated visits/Googlebot)
 let galleryCache = {
@@ -19,33 +12,6 @@ const CACHE_TTL_MS = 15 * 60 * 1000;
 
 export const invalidateGalleryCache = () => {
   galleryCache = { data: null, timestamp: 0 };
-};
-
-// Helper: load local JSON file
-const loadDiskGallery = () => {
-  try {
-    if (fs.existsSync(PERSISTENT_GALLERY_PATH)) {
-      const raw = fs.readFileSync(PERSISTENT_GALLERY_PATH, 'utf-8');
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    }
-  } catch (err) {
-    console.warn('[Gallery] Error reading local gallery_images.json:', err.message);
-  }
-  return [];
-};
-
-// Helper: save local JSON file
-const saveDiskGallery = (items) => {
-  try {
-    const dir = path.dirname(PERSISTENT_GALLERY_PATH);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(PERSISTENT_GALLERY_PATH, JSON.stringify(items, null, 2), 'utf-8');
-  } catch (err) {
-    console.warn('[Gallery] Error writing local gallery_images.json:', err.message);
-  }
 };
 
 // Helper: generate clean URL slug from title
@@ -61,8 +27,9 @@ const generateSlug = (title) => {
 
 /**
  * GET /api/gallery
- * Public list of all SEO gallery images & posters.
+ * Public list of all SEO gallery images & posters added from the Admin Panel.
  * Uses 15-minute in-memory cache to guarantee zero-waste egress on Supabase.
+ * Strictly dynamic — no static demo files.
  */
 export const getGalleryImages = async (req, res) => {
   try {
@@ -90,22 +57,23 @@ export const getGalleryImages = async (req, res) => {
       return res.status(200).json({ success: true, count: filtered.length, data: filtered, cached: true });
     }
 
-    // 2. Fetch from Supabase with graceful fallback
+    // 2. Fetch directly from Supabase (Strictly live admin-added assets)
     let dbItems = [];
-    let isDbSuccess = false;
 
     try {
-      // Primary: query dedicated public.gallery_images table
+      // Primary: query public.gallery_images table
       const resGallery = await supabaseService.selectAll('gallery_images', 'created_at', false);
       if (Array.isArray(resGallery) && resGallery.length > 0) {
-        dbItems = [...resGallery];
-        isDbSuccess = true;
+        dbItems = resGallery.map((item) => ({
+          ...item,
+          cdn_url: item.cdn_url || toBrandedCdnUrl(item.image_url),
+        }));
       }
     } catch (e1) {
-      console.warn('[Gallery] Supabase gallery_images query note:', e1.message);
+      console.warn('[Gallery] Supabase gallery_images query notice:', e1.message);
     }
 
-    // Secondary / Fallback: query site_branding table for any gallery posters
+    // Secondary / Fallback: check site_branding table for any gallery posters
     try {
       const resBranding = await supabaseService.selectAll('site_branding', 'created_at', false);
       if (Array.isArray(resBranding)) {
@@ -131,46 +99,25 @@ export const getGalleryImages = async (req, res) => {
             updated_at: r.updated_at,
           }));
         if (brandingPosters.length > 0) {
-          // Merge avoiding duplicates by image_url or id
           const existingUrls = new Set(dbItems.map((d) => d.image_url || d.cdn_url));
           brandingPosters.forEach((bp) => {
             if (!existingUrls.has(bp.image_url) && !existingUrls.has(bp.cdn_url)) {
               dbItems.push(bp);
             }
           });
-          isDbSuccess = true;
         }
       }
     } catch (e2) {}
 
-    // 3. Merge with local persistent file to prevent data loss
-    const diskItems = loadDiskGallery();
-    const idMap = new Map();
-
-    // Add disk items first
-    diskItems.forEach((item) => {
-      if (item && item.id) idMap.set(item.id, item);
-    });
-
-    // Overwrite / add DB items
-    dbItems.forEach((item) => {
-      if (item && item.id) {
-        idMap.set(item.id, {
-          ...item,
-          cdn_url: item.cdn_url || toBrandedCdnUrl(item.image_url),
-        });
-      }
-    });
-
-    const mergedList = Array.from(idMap.values()).sort(
+    // Sort descending by created_at
+    const sortedList = dbItems.sort(
       (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
     );
 
-    // Save back to disk and cache in memory
-    saveDiskGallery(mergedList);
-    galleryCache = { data: mergedList, timestamp: now };
+    // Cache in memory
+    galleryCache = { data: sortedList, timestamp: now };
 
-    let filtered = [...mergedList];
+    let filtered = [...sortedList];
     if (status && status !== 'all') {
       filtered = filtered.filter((i) => (i.status || 'active') === status);
     }
@@ -190,19 +137,18 @@ export const getGalleryImages = async (req, res) => {
     return res.status(200).json({ success: true, count: filtered.length, data: filtered, cached: false });
   } catch (err) {
     console.error('getGalleryImages Error:', err);
-    const diskFallback = loadDiskGallery();
-    return res.status(200).json({ success: true, count: diskFallback.length, data: diskFallback, cached: false });
+    return res.status(200).json({ success: true, count: 0, data: [], cached: false });
   }
 };
 
 /**
  * POST /api/gallery
- * Admin: Upload or create a new SEO gallery image / poster
+ * Admin: Upload or create a new SEO gallery image / poster directly in Supabase
  */
 export const createGalleryImage = async (req, res) => {
   try {
     const title = (req.body?.title || '').trim();
-    const category = (req.body?.category || 'Festival & Greetings').trim();
+    const category = (req.body?.category || 'Festivals & Greetings').trim();
     const caption = (req.body?.caption || '').trim();
     const altText = (req.body?.alt_text || req.body?.altText || title).trim();
     let tags = [];
@@ -271,47 +217,33 @@ export const createGalleryImage = async (req, res) => {
       updated_at: new Date().toISOString(),
     };
 
-    // 1. Try insert into public.gallery_images in Supabase (omit id so Supabase generates UUID)
+    // Save directly to Supabase gallery_images (Supabase auto-assigns UUID)
     try {
       const dbRes = await supabaseService.insert('gallery_images', newRecord);
       if (dbRes && dbRes.id) {
         newRecord.id = dbRes.id;
       }
     } catch (dbErr) {
-      console.warn('[Gallery] Supabase gallery_images insert failed, trying site_branding fallback:', dbErr.message);
-      // 2. Fallback: try inserting into site_branding table
-      try {
-        const brandingPayload = {
-          asset_type: 'gallery_poster',
-          asset_name: title,
-          cloudinary_public_id: cloudinaryPubId,
-          cloudinary_secure_url: finalImageUrl,
-          resource_type: 'image',
-          format,
-          width,
-          height,
-          version: String(Date.now()),
-          is_active: true,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          updated_by: req.user?.email || 'admin',
-        };
-        const sbRes = await supabaseService.insert('site_branding', brandingPayload);
-        if (sbRes && sbRes.id) newRecord.id = sbRes.id;
-      } catch (sbErr) {
-        console.warn('[Gallery] Supabase insert note (using disk storage):', sbErr.message);
-      }
+      console.warn('[Gallery] Supabase gallery_images insert fallback to site_branding:', dbErr.message);
+      const brandingPayload = {
+        asset_type: 'gallery_poster',
+        asset_name: title,
+        cloudinary_public_id: cloudinaryPubId,
+        cloudinary_secure_url: finalImageUrl,
+        resource_type: 'image',
+        format,
+        width,
+        height,
+        version: String(Date.now()),
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        updated_by: req.user?.email || 'admin',
+      };
+      const sbRes = await supabaseService.insert('site_branding', brandingPayload);
+      if (sbRes && sbRes.id) newRecord.id = sbRes.id;
     }
 
-    // If no DB id was assigned, use fallback ID for local disk
-    if (!newRecord.id) {
-      newRecord.id = `poster_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    }
-
-    // 3. Save to local persistent file
-    const currentList = loadDiskGallery();
-    const updatedList = [newRecord, ...currentList.filter((i) => i.id !== newRecord.id)];
-    saveDiskGallery(updatedList);
     invalidateGalleryCache();
 
     return res.status(201).json({
@@ -327,27 +259,30 @@ export const createGalleryImage = async (req, res) => {
 
 /**
  * DELETE /api/gallery/:id
- * Admin: Delete a gallery poster from Cloudinary, Supabase & disk
+ * Admin: Delete a gallery poster from Cloudinary and Supabase
  */
 export const deleteGalleryImage = async (req, res) => {
   try {
     const { id } = req.params;
     if (!id) return res.status(400).json({ success: false, message: 'ID required' });
 
-    const currentList = loadDiskGallery();
-    const target = currentList.find((i) => i.id === id);
+    // 1. Find record to get cloudinary_public_id
+    let target = null;
+    try {
+      target = await supabaseService.selectById('gallery_images', id);
+    } catch (e) {}
 
-    // 1. Delete media from Cloudinary if public_id exists
+    // 2. Delete media from Cloudinary if public_id exists
     const pubId = target?.cloudinary_public_id;
     if (pubId) {
       try {
         await cloudinaryService.deleteMedia(pubId);
       } catch (cErr) {
-        console.warn('Cloudinary poster deletion note:', cErr.message);
+        console.warn('Cloudinary poster deletion notice:', cErr.message);
       }
     }
 
-    // 2. Delete from Supabase
+    // 3. Delete from Supabase
     try {
       await supabaseService.delete('gallery_images', id);
     } catch (e1) {
@@ -356,9 +291,6 @@ export const deleteGalleryImage = async (req, res) => {
       } catch (e2) {}
     }
 
-    // 3. Delete from local JSON
-    const updatedList = currentList.filter((i) => i.id !== id);
-    saveDiskGallery(updatedList);
     invalidateGalleryCache();
 
     return res.status(200).json({ success: true, message: 'Poster deleted successfully.' });

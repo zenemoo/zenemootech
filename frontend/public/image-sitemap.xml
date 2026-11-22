@@ -346,22 +346,4 @@
     </image:image>
   </url>
 
-  <url>
-    <loc>https://www.zenemoo.in/images</loc>
-    <image:image>
-      <image:loc>https://www.zenemoo.in/cdn/assets/udyam-qr.png</image:loc>
-      <image:title>Zenemoo Officially MSME Registered — Government of India — Official Zenemoo Official Badges &amp; Certifications</image:title>
-      <image:caption>Official announcement and verification QR code of Zenemoo&apos;s registration under the Ministry of MSME, Govt. of India.</image:caption>
-    </image:image>
-  </url>
-
-  <url>
-    <loc>https://www.zenemoo.in/images</loc>
-    <image:image>
-      <image:loc>https://www.zenemoo.in/cdn/assets/logo.png</image:loc>
-      <image:title>Zenemoo Official Brand Identity &amp; Neural Crest — Official Zenemoo Brand Graphics</image:title>
-      <image:caption>Official corporate logo and visual identity of Zenemoo AI Data Solutions.</image:caption>
-    </image:image>
-  </url>
-
 </urlset>

@@ -62,8 +62,11 @@ export default async function handler(req, res) {
         fetch('https://zenemootech-api.onrender.com/api/team', {
           headers: { 'User-Agent': 'Zenemoo-Sitemap-Generator/1.0' },
         }),
-        fetch('https://zenemootech-api.onrender.com/api/gallery', {
-          headers: { 'User-Agent': 'Zenemoo-Sitemap-Generator/1.0' },
+        fetch('https://wkbkomwjuywdeaxgchxw.supabase.co/rest/v1/gallery_images?status=eq.active&order=created_at.desc', {
+          headers: {
+            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndrYmtvbXdqdXl3ZGVheGdjaHh3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUxNjk2OTIsImV4cCI6MjEwMDc0NTY5Mn0.A9O0I0nzdWLrsULZEdL6GxUp4Ok3Y_QRbqCMJesXbM4',
+            'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndrYmtvbXdqdXl3ZGVheGdjaHh3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUxNjk2OTIsImV4cCI6MjEwMDc0NTY5Mn0.A9O0I0nzdWLrsULZEdL6GxUp4Ok3Y_QRbqCMJesXbM4',
+          },
         }),
       ]);
 
@@ -77,7 +80,8 @@ export default async function handler(req, res) {
       }
       if (galleryRes.ok) {
         const json = await galleryRes.json();
-        if (json && Array.isArray(json.data)) galleryImages = json.data;
+        if (Array.isArray(json)) galleryImages = json;
+        else if (json && Array.isArray(json.data)) galleryImages = json.data;
       }
     } catch (e) {
       console.warn('[Image Sitemap API Fetch Warning]:', e.message);

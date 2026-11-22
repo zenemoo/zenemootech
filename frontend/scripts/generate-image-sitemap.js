@@ -62,9 +62,15 @@ async function run() {
       fetch('https://zenemootech-api.onrender.com/api/team', {
         headers: { 'User-Agent': 'Zenemoo-Build-Sitemap-Generator/1.0' },
       }),
-      fetch('https://zenemootech-api.onrender.com/api/gallery', {
-        headers: { 'User-Agent': 'Zenemoo-Build-Sitemap-Generator/1.0' },
-      }),
+      fetch(
+        'https://wkbkomwjuywdeaxgchxw.supabase.co/rest/v1/gallery_images?status=eq.active&order=created_at.desc',
+        {
+          headers: {
+            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndrYmtvbXdqdXl3ZGVheGdjaHh3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUxNjk2OTIsImV4cCI6MjEwMDc0NTY5Mn0.A9O0I0nzdWLrsULZEdL6GxUp4Ok3Y_QRbqCMJesXbM4',
+            'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndrYmtvbXdqdXl3ZGVheGdjaHh3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUxNjk2OTIsImV4cCI6MjEwMDc0NTY5Mn0.A9O0I0nzdWLrsULZEdL6GxUp4Ok3Y_QRbqCMJesXbM4',
+          },
+        }
+      ),
     ]);
 
     if (oppRes.ok) {
@@ -83,21 +89,28 @@ async function run() {
     console.warn('⚠️ Could not fetch from API for static sitemap:', err.message);
   }
 
-  // Merge with local gallery_images.json to ensure all newly added posters are immediately included
-  try {
-    const localGalleryPath = path.resolve(__dirname, '../../backend/src/database/gallery_images.json');
-    if (fs.existsSync(localGalleryPath)) {
-      const localItems = JSON.parse(fs.readFileSync(localGalleryPath, 'utf8'));
-      if (Array.isArray(localItems)) {
-        const existingUrls = new Set(galleryImages.map((g) => g.image_url || g.cdn_url));
-        localItems.forEach((li) => {
-          if (!existingUrls.has(li.image_url) && !existingUrls.has(li.cdn_url)) {
-            galleryImages.push(li);
-          }
-        });
+  // Fallback to Supabase direct REST if Render API was asleep/unreachable during build
+  if (galleryImages.length === 0) {
+    try {
+      const supaRes = await fetch(
+        'https://wkbkomwjuywdeaxgchxw.supabase.co/rest/v1/gallery_images?status=eq.active&order=created_at.desc',
+        {
+          headers: {
+            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndrYmtvbXdqdXl3ZGVheGdjaHh3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUxNjk2OTIsImV4cCI6MjEwMDc0NTY5Mn0.A9O0I0nzdWLrsULZEdL6GxUp4Ok3Y_QRbqCMJesXbM4',
+            'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndrYmtvbXdqdXl3ZGVheGdjaHh3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUxNjk2OTIsImV4cCI6MjEwMDc0NTY5Mn0.A9O0I0nzdWLrsULZEdL6GxUp4Ok3Y_QRbqCMJesXbM4',
+          },
+        }
+      );
+      if (supaRes.ok) {
+        const supaData = await supaRes.json();
+        if (Array.isArray(supaData)) {
+          galleryImages = supaData;
+        }
       }
+    } catch (e) {
+      console.warn('⚠️ Could not fetch from Supabase fallback:', e.message);
     }
-  } catch (e) {}
+  }
 
   let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
   xml += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"\n`;
