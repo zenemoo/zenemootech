@@ -54,7 +54,10 @@ interface ZenemooImageGalleryPageProps {
 const ITEMS_PER_PAGE = 12;
 
 /**
- * Google-Style "Z e n e m o o o o o o" Pagination Component
+ * Zenemoo-Style "ZENEMOOOOOOO" Pagination Component
+ * Colors strictly match Zenemoo official logo:
+ * - "ZENEM" in crisp bold white
+ * - The "O"s alternate in signature brand colors: Royal Purple (#8B5CF6) and Electric Cyan (#00F0FF)
  */
 interface GooglePaginationProps {
   currentPage: number;
@@ -83,17 +86,14 @@ const GooglePagination: React.FC<GooglePaginationProps> = ({
     pageNumbers.push(i);
   }
 
-  // Google color cycle for the 'o's: Red, Yellow, Blue, Green
-  const oColors = ['text-[#EA4335]', 'text-[#FBBC05]', 'text-[#4285F4]', 'text-[#34A853]'];
-
   return (
-    <div className="flex flex-col items-center justify-center pt-12 pb-8 select-none font-sans">
-      <div className="flex items-end justify-center gap-1 sm:gap-2.5">
+    <div className="flex flex-col items-center justify-center pt-14 pb-10 select-none font-sans">
+      <div className="flex items-end justify-center gap-1.5 sm:gap-3">
         {/* Previous Button */}
         {currentPage > 1 ? (
           <button
             onClick={() => onPageChange(currentPage - 1)}
-            className="flex items-center gap-1 text-[#4285F4] hover:text-[#8ab4f8] hover:underline text-xs sm:text-sm font-medium mr-2 sm:mr-4 cursor-pointer pb-1.5 transition-colors"
+            className="flex items-center gap-1 text-cyan-400 hover:text-cyan-300 hover:underline text-xs sm:text-sm font-mono font-medium mr-2 sm:mr-4 cursor-pointer pb-2 transition-colors"
           >
             <span className="text-base leading-none">&lt;</span>
             <span className="hidden xs:inline">Previous</span>
@@ -102,42 +102,46 @@ const GooglePagination: React.FC<GooglePaginationProps> = ({
           <div className="w-8 sm:w-16" />
         )}
 
-        {/* Wordmark Prefix: "Z e n e m" in authentic Google-inspired colors */}
-        <div className="flex items-end text-3xl sm:text-5xl font-extrabold tracking-tighter pb-4">
-          <span className="text-[#4285F4]">Z</span>
-          <span className="text-[#EA4335]">e</span>
-          <span className="text-[#FBBC05]">n</span>
-          <span className="text-[#4285F4]">e</span>
-          <span className="text-[#34A853]">m</span>
+        {/* Wordmark Prefix: "ZENEM" in bold crisp white (Zenemoo Logo Style) */}
+        <div className="flex items-end text-3xl sm:text-5xl font-black tracking-wider pb-3.5 text-white font-display">
+          <span>Z</span>
+          <span>E</span>
+          <span>N</span>
+          <span>E</span>
+          <span>M</span>
         </div>
 
-        {/* The 'o's corresponding to each page number */}
+        {/* The 'O's in Zenemoo brand colors: alternating Royal Purple (#8B5CF6) and Electric Cyan (#00F0FF) */}
         <div className="flex items-end gap-1 sm:gap-2">
           {pageNumbers.map((p) => {
             const isCurrent = p === currentPage;
-            const colorClass = isCurrent ? 'text-[#EA4335]' : oColors[(p - 1) % oColors.length];
+            const isCyan = p % 2 === 0;
+            const letterColor = isCyan ? 'text-[#00F0FF]' : 'text-[#8B5CF6]';
+            const glowShadow = isCyan
+              ? 'drop-shadow-[0_0_12px_rgba(0,240,255,0.7)]'
+              : 'drop-shadow-[0_0_12px_rgba(139,92,246,0.7)]';
 
             return (
               <div key={p} className="flex flex-col items-center">
                 <button
                   onClick={() => onPageChange(p)}
                   disabled={isCurrent}
-                  className={`text-3xl sm:text-5xl font-extrabold leading-none transition-all ${colorClass} ${
+                  className={`text-3xl sm:text-5xl font-black leading-none transition-all font-display ${letterColor} ${
                     isCurrent
-                      ? 'scale-110 drop-shadow-[0_0_12px_rgba(234,67,53,0.6)] cursor-default'
+                      ? `scale-110 ${glowShadow} cursor-default`
                       : 'hover:scale-125 cursor-pointer opacity-80 hover:opacity-100'
                   }`}
                   title={`Go to page ${p}`}
                 >
-                  o
+                  O
                 </button>
                 <button
                   onClick={() => onPageChange(p)}
                   disabled={isCurrent}
-                  className={`text-xs sm:text-sm font-mono mt-1 transition-colors ${
+                  className={`text-xs sm:text-sm font-mono mt-1.5 transition-colors ${
                     isCurrent
                       ? 'text-white font-bold cursor-default'
-                      : 'text-[#4285F4] hover:text-[#8ab4f8] hover:underline cursor-pointer'
+                      : 'text-cyan-400 hover:text-cyan-300 hover:underline cursor-pointer'
                   }`}
                 >
                   {p}
@@ -147,16 +151,11 @@ const GooglePagination: React.FC<GooglePaginationProps> = ({
           })}
         </div>
 
-        {/* Trailing exclamation / dot */}
-        <div className="text-3xl sm:text-5xl font-extrabold tracking-tighter pb-4 text-[#4285F4]">
-          !
-        </div>
-
         {/* Next Button */}
         {currentPage < totalPages ? (
           <button
             onClick={() => onPageChange(currentPage + 1)}
-            className="flex items-center gap-1 text-[#4285F4] hover:text-[#8ab4f8] hover:underline text-xs sm:text-sm font-medium ml-2 sm:ml-4 cursor-pointer pb-1.5 transition-colors"
+            className="flex items-center gap-1 text-cyan-400 hover:text-cyan-300 hover:underline text-xs sm:text-sm font-mono font-medium ml-2 sm:ml-4 cursor-pointer pb-2 transition-colors"
           >
             <span className="hidden xs:inline">Next</span>
             <span className="text-base leading-none">&gt;</span>
@@ -164,6 +163,13 @@ const GooglePagination: React.FC<GooglePaginationProps> = ({
         ) : (
           <div className="w-8 sm:w-16" />
         )}
+      </div>
+
+      {/* Zenemoo Signature Gradient Accent Bar: Cyan to Purple */}
+      <div className="flex items-center gap-2.5 mt-4 opacity-80">
+        <div className="w-10 sm:w-20 h-0.5 bg-gradient-to-r from-transparent to-cyan-400 rounded-full" />
+        <span className="text-[10px] font-mono text-slate-400 tracking-widest uppercase">EST 2023 • ZENEMOO IMAGES</span>
+        <div className="w-10 sm:w-20 h-0.5 bg-gradient-to-r from-purple-500 to-transparent rounded-full" />
       </div>
     </div>
   );
@@ -478,31 +484,32 @@ export const ZenemooImageGalleryPage: React.FC<ZenemooImageGalleryPageProps> = (
       <Navbar onBack={onBack} showBackButton={true} onOpenAiDrawer={onOpenAiDrawer} />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 sm:pt-28 pb-20 space-y-8">
-        {/* ── GOOGLE-STYLE CLEAN MINIMALIST HEADER ── */}
-        <div className="flex flex-col items-center justify-center text-center pt-2 sm:pt-4 space-y-5">
-          {/* Brand Logo & Title */}
-          <div className="flex items-center gap-2.5">
-            <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight font-display">
-              <span className="text-[#4285F4]">Z</span>
-              <span className="text-[#EA4335]">e</span>
-              <span className="text-[#FBBC05]">n</span>
-              <span className="text-[#4285F4]">e</span>
-              <span className="text-[#34A853]">m</span>
-              <span className="text-[#EA4335]">o</span>
-              <span className="text-[#4285F4]">o</span>
-              <span className="text-slate-400 font-light text-2xl sm:text-3xl md:text-4xl ml-2">Images</span>
+        {/* ── GOOGLE-STYLE CLEAN MINIMALIST HEADER WITH OFFICIAL ZENEMOO BRANDING ── */}
+        <div className="flex flex-col items-center justify-center text-center pt-2 sm:pt-4 space-y-4">
+          {/* Brand Logo & Title - Strictly from Zenemoo Official Logo (Image 2) */}
+          <div className="flex flex-col items-center gap-1.5">
+            <h1 className="text-3xl sm:text-4xl md:text-5xl font-black tracking-wider font-display flex items-baseline select-none">
+              <span className="text-white">ZENEM</span>
+              <span className="text-[#8B5CF6]">O</span>
+              <span className="text-[#00F0FF]">O</span>
+              <span className="text-slate-400 font-light text-2xl sm:text-3xl md:text-4xl ml-2.5">Images</span>
             </h1>
+            <div className="flex items-center gap-2 text-[10px] sm:text-xs font-mono text-slate-400 opacity-80">
+              <span className="h-[1px] w-6 sm:w-10 bg-gradient-to-r from-transparent to-cyan-400" />
+              <span className="tracking-widest uppercase">EST 2023 • OFFICIAL VISUAL DIRECTORY</span>
+              <span className="h-[1px] w-6 sm:w-10 bg-gradient-to-r from-purple-500 to-transparent" />
+            </div>
           </div>
 
-          {/* Clean Google Search Box */}
-          <div className="w-full max-w-2xl relative">
+          {/* Clean Search Box with Zenemoo Cyan Focus */}
+          <div className="w-full max-w-2xl relative pt-2">
             <Search className="w-4 h-4 text-slate-400 absolute left-4 sm:left-5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search Zenemoo posters, festivals, certificates, opportunities..."
-              className="w-full pl-11 sm:pl-12 pr-10 py-3 sm:py-3.5 bg-[#121622] hover:bg-[#151a29] focus:bg-[#151a29] border border-white/10 hover:border-white/20 focus:border-[#4285F4] rounded-full text-sm sm:text-base text-white placeholder-slate-400 shadow-lg shadow-black/40 focus:outline-none focus:ring-2 focus:ring-[#4285F4]/30 transition-all"
+              className="w-full pl-11 sm:pl-12 pr-10 py-3 sm:py-3.5 bg-[#121622] hover:bg-[#151a29] focus:bg-[#151a29] border border-white/10 hover:border-cyan-500/40 focus:border-cyan-400 rounded-full text-sm sm:text-base text-white placeholder-slate-400 shadow-lg shadow-black/40 focus:outline-none focus:ring-2 focus:ring-cyan-500/25 transition-all"
             />
             {searchQuery && (
               <button
@@ -515,7 +522,7 @@ export const ZenemooImageGalleryPage: React.FC<ZenemooImageGalleryPageProps> = (
             )}
           </div>
 
-          {/* Google Images Filter Chips */}
+          {/* Category Filter Chips with Zenemoo Gradient Accent */}
           <div className="w-full flex items-center justify-start sm:justify-center gap-2 overflow-x-auto pb-2 scrollbar-none px-1">
             {Object.keys(categoryCounts).map((catName) => {
               const count = categoryCounts[catName] || 0;
@@ -526,14 +533,14 @@ export const ZenemooImageGalleryPage: React.FC<ZenemooImageGalleryPageProps> = (
                   onClick={() => setSelectedCategory(catName)}
                   className={`px-3.5 py-1.5 rounded-full text-xs font-mono font-medium transition-all shrink-0 cursor-pointer flex items-center gap-1.5 border ${
                     isActive
-                      ? 'bg-[#1b263b] text-cyan-300 border-[#4285F4] shadow-sm'
+                      ? 'bg-gradient-to-r from-cyan-500/20 to-purple-500/20 text-cyan-300 border-cyan-500/50 shadow-sm shadow-cyan-500/20'
                       : 'bg-[#0f1420] text-slate-400 border-white/10 hover:text-white hover:border-white/25'
                   }`}
                 >
                   <span>{catName}</span>
                   <span
                     className={`px-1.5 py-0.2 rounded-full text-[10px] ${
-                      isActive ? 'bg-[#4285F4]/30 text-cyan-200' : 'bg-white/5 text-slate-500'
+                      isActive ? 'bg-cyan-500/30 text-cyan-200' : 'bg-white/5 text-slate-500'
                     }`}
                   >
                     {count}
@@ -553,7 +560,7 @@ export const ZenemooImageGalleryPage: React.FC<ZenemooImageGalleryPageProps> = (
               <button
                 onClick={() => setLayoutMode('masonry')}
                 className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                  layoutMode === 'masonry' ? 'bg-[#4285F4]/20 text-cyan-300' : 'text-slate-400 hover:text-white'
+                  layoutMode === 'masonry' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'text-slate-400 hover:text-white'
                 }`}
                 title="Masonry View"
               >
@@ -562,7 +569,7 @@ export const ZenemooImageGalleryPage: React.FC<ZenemooImageGalleryPageProps> = (
               <button
                 onClick={() => setLayoutMode('grid')}
                 className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                  layoutMode === 'grid' ? 'bg-[#4285F4]/20 text-cyan-300' : 'text-slate-400 hover:text-white'
+                  layoutMode === 'grid' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'text-slate-400 hover:text-white'
                 }`}
                 title="Grid View"
               >
@@ -609,7 +616,7 @@ export const ZenemooImageGalleryPage: React.FC<ZenemooImageGalleryPageProps> = (
                 <div
                   key={item.id}
                   onClick={() => setActiveItem(item)}
-                  className="group relative bg-[#0f1422] hover:bg-[#141b2e] rounded-xl sm:rounded-2xl border border-white/10 hover:border-[#4285F4]/60 overflow-hidden shadow-md hover:shadow-xl hover:shadow-[#4285F4]/15 transition-all duration-300 cursor-pointer break-inside-avoid flex flex-col justify-between"
+                  className="group relative bg-[#0f1422] hover:bg-[#141b2e] rounded-xl sm:rounded-2xl border border-white/10 hover:border-cyan-500/60 overflow-hidden shadow-md hover:shadow-xl hover:shadow-cyan-500/15 transition-all duration-300 cursor-pointer break-inside-avoid flex flex-col justify-between"
                 >
                   {/* Clean Image Container */}
                   <div className="relative overflow-hidden bg-black/60 flex items-center justify-center min-h-[160px] sm:min-h-[220px]">
