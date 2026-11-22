@@ -48,10 +48,12 @@ import {
   UserCheck,
   LayoutGrid,
   FileSpreadsheet,
-  Maximize2
+  Maximize2,
+  Copy,
 } from 'lucide-react';
 import { FaXTwitter, FaInstagram, FaYoutube, FaWhatsapp, FaTelegram, FaLinkedin } from 'react-icons/fa6';
 import { OpportunityProgram, CustomQuestion, isTempId } from '../lib/opportunityStore';
+import { toBrandedCdnUrl, toCloudinaryDirectUrl, isCloudinaryOrCdnUrl } from '../lib/cdnHelper';
 
 export interface EnterpriseOpportunityEditorModalProps {
   isOpen: boolean;
@@ -93,6 +95,7 @@ export const EnterpriseOpportunityEditorModal: React.FC<EnterpriseOpportunityEdi
   const [posterUrl, setPosterUrl] = useState('');
   const [isLogoUploading, setIsLogoUploading] = useState(false);
   const [isPosterUploading, setIsPosterUploading] = useState(false);
+  const [copiedPosterLink, setCopiedPosterLink] = useState<'cdn' | 'source' | null>(null);
 
   // Communication Links
   const [whatsappGroupUrl, setWhatsappGroupUrl] = useState('');
@@ -463,7 +466,7 @@ export const EnterpriseOpportunityEditorModal: React.FC<EnterpriseOpportunityEdi
         status: targetStatus || status,
         description: description.trim(),
         company_logo: companyLogo.trim(),
-        poster_url: posterUrl.trim(),
+        poster_url: toBrandedCdnUrl(posterUrl).trim(),
         features: parsedFeatures.length > 0 ? parsedFeatures : (opportunity?.features || []),
         requirements: parsedReqs.length > 0 ? parsedReqs : parsedElig,
         language_skills: parsedSkills,
@@ -933,33 +936,169 @@ export const EnterpriseOpportunityEditorModal: React.FC<EnterpriseOpportunityEdi
 
                 {/* Poster Banner Upload & URL */}
                 <div className="p-5 rounded-2xl border border-white/10 bg-slate-900/80 space-y-4">
-                  <h4 className="text-sm font-bold font-mono text-white flex items-center gap-2">
-                    <ImageIcon className="w-4 h-4 text-purple-400" /> Program Poster Banner
-                  </h4>
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-bold font-mono text-white flex items-center gap-2">
+                      <ImageIcon className="w-4 h-4 text-purple-400" /> Program Poster Banner (SEO &amp; CDN)
+                    </h4>
+                    {posterUrl && (
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 flex items-center gap-1">
+                        <Sparkles className="w-3 h-3" /> Auto-Indexed in Image Sitemap
+                      </span>
+                    )}
+                  </div>
 
                   <AdminSeoImageUploader
                     folder="zenemoo/opportunities/posters"
                     entityType="opportunity"
                     entityTitle={title || partnerName || 'Opportunity Poster Banner'}
                     assetType="banner"
-                    currentImageUrl={posterUrl}
+                    currentImageUrl={toCloudinaryDirectUrl(posterUrl) || posterUrl}
                     onUploadSuccess={(res) => {
-                      setPosterUrl(res.imageUrl);
-                      showToast(`Poster banner uploaded with SEO alt text: "${res.altText}"`, 'success');
+                      const branded = toBrandedCdnUrl(res.imageUrl);
+                      setPosterUrl(branded);
+                      showToast(`Poster banner uploaded & converted to Branded CDN: "${res.altText}"`, 'success');
                     }}
                     label="Automatic SEO Poster Banner Upload"
                   />
 
-                  <div className="space-y-1 pt-2">
-                    <label className="text-[11px] font-mono text-slate-400 block">Direct Image URL:</label>
-                    <input
-                      type="url"
-                      value={posterUrl}
-                      onChange={(e) => setPosterUrl(e.target.value)}
-                      placeholder="https://res.cloudinary.com/..."
-                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/15 text-white font-mono text-xs focus:outline-none"
-                    />
+                  <div className="space-y-1.5 pt-2">
+                    <label className="text-[11px] font-mono text-slate-400 block">
+                      Direct Image or Cloudinary URL (Auto-converts to Branded CDN):
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="url"
+                        value={posterUrl}
+                        onChange={(e) => {
+                          const val = e.target.value.trim();
+                          if (val.includes('cloudinary.com')) {
+                            const converted = toBrandedCdnUrl(val);
+                            setPosterUrl(converted);
+                            showToast('Converted Cloudinary URL to Zenemoo Branded CDN URL', 'info');
+                          } else {
+                            setPosterUrl(e.target.value);
+                          }
+                        }}
+                        placeholder="Paste https://res.cloudinary.com/... or https://www.zenemoo.in/cdn/..."
+                        className="flex-1 px-3 py-2 rounded-xl bg-slate-950 border border-white/15 text-white font-mono text-xs focus:outline-none focus:border-cyan-500/50"
+                      />
+                      {posterUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setPosterUrl('')}
+                          className="px-2.5 py-2 rounded-xl bg-white/5 hover:bg-rose-500/20 text-slate-400 hover:text-rose-300 border border-white/10 text-xs font-mono transition-all cursor-pointer"
+                          title="Clear poster image"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
                   </div>
+
+                  {/* Dual-Link Branded CDN & Cloudinary Origin Details */}
+                  {posterUrl && (() => {
+                    const brandedUrl = toBrandedCdnUrl(posterUrl);
+                    const sourceUrl = toCloudinaryDirectUrl(posterUrl);
+
+                    const copyLink = (text: string, type: 'cdn' | 'source') => {
+                      navigator.clipboard.writeText(text);
+                      setCopiedPosterLink(type);
+                      setTimeout(() => setCopiedPosterLink(null), 2000);
+                      showToast(`Copied ${type === 'cdn' ? 'Branded CDN URL' : 'Direct Cloudinary URL'}!`, 'success');
+                    };
+
+                    return (
+                      <div className="p-4 rounded-xl bg-black/50 border border-cyan-500/30 space-y-3 font-mono text-xs">
+                        {/* Branded CDN Row */}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="text-cyan-400 font-bold flex items-center gap-1.5">
+                              <Sparkles className="w-3.5 h-3.5" /> Branded CDN URL (Google Image Indexed)
+                            </span>
+                            <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                              ✓ Live on /cdn/...
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 bg-slate-950 p-2 rounded-lg border border-cyan-500/30">
+                            <span className="truncate text-slate-200 text-[11px] select-all flex-1">
+                              {brandedUrl}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => copyLink(brandedUrl, 'cdn')}
+                              className="p-1.5 rounded bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 transition-all cursor-pointer shrink-0"
+                              title="Copy Branded CDN Link"
+                            >
+                              {copiedPosterLink === 'cdn' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                            </button>
+                            <a
+                              href={brandedUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-1.5 rounded bg-white/5 hover:bg-white/10 text-slate-300 transition-all shrink-0"
+                              title="Test Branded CDN Link in New Tab"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                          </div>
+                        </div>
+
+                        {/* Cloudinary Origin Source Row */}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="text-slate-400 font-bold flex items-center gap-1.5">
+                              <Layers className="w-3.5 h-3.5 text-purple-400" /> Cloudinary Origin Source URL
+                            </span>
+                            <span className="text-[10px] text-slate-500">
+                              Storage Backend
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 bg-slate-950 p-2 rounded-lg border border-white/10">
+                            <span className="truncate text-slate-400 text-[11px] select-all flex-1">
+                              {sourceUrl}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => copyLink(sourceUrl, 'source')}
+                              className="p-1.5 rounded bg-white/5 hover:bg-white/10 text-slate-300 transition-all cursor-pointer shrink-0"
+                              title="Copy Direct Cloudinary URL"
+                            >
+                              {copiedPosterLink === 'source' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                            </button>
+                            <a
+                              href={sourceUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-1.5 rounded bg-white/5 hover:bg-white/10 text-slate-300 transition-all shrink-0"
+                              title="Open Direct Cloudinary Asset"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                          </div>
+                        </div>
+
+                        {/* Live Preview with Guaranteed Fallback */}
+                        <div className="pt-2 flex items-center gap-4">
+                          <div className="relative w-24 h-24 rounded-xl overflow-hidden bg-black/60 border border-white/10 shrink-0 shadow-md">
+                            <img
+                              src={brandedUrl}
+                              alt="Poster Preview"
+                              onError={(e) => {
+                                e.currentTarget.src = sourceUrl;
+                              }}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                          <div className="text-[11px] text-slate-400 space-y-1">
+                            <p className="text-white font-bold">Image Preview Status: Active</p>
+                            <p className="text-[10px] leading-relaxed">
+                              This poster is automatically mapped into <strong className="text-cyan-300">/image-sitemap.xml</strong> under Google Image Sitemap schema. Zero broken links with seamless Cloudinary fallback.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             </div>

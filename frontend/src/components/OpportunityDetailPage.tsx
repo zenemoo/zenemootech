@@ -44,6 +44,7 @@ import { TurnstileWidget } from './TurnstileWidget';
 import { useActiveLogo } from '../lib/useActiveLogo';
 import { SeoImage } from '../seo/components/SeoImage';
 import { Navbar } from './Navbar';
+import { toBrandedCdnUrl, toCloudinaryDirectUrl } from '../lib/cdnHelper';
 
 interface OpportunityDetailPageProps {
   opportunityId: string;
@@ -692,8 +693,11 @@ ${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` 
                   <div className="glass-panel p-2.5 rounded-3xl border border-white/10 overflow-hidden group shadow-2xl relative bg-black/40">
                     <div className="relative overflow-hidden rounded-2xl cursor-pointer" onClick={() => setIsPreviewOpen(true)}>
                       <img
-                        src={opportunity.poster_url}
+                        src={toBrandedCdnUrl(opportunity.poster_url)}
                         alt={opportunity.title}
+                        onError={(e) => {
+                          e.currentTarget.src = toCloudinaryDirectUrl(opportunity.poster_url);
+                        }}
                         className="w-full h-auto max-h-[580px] object-contain rounded-2xl group-hover:scale-[1.01] transition-all duration-300 mx-auto"
                       />
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white text-xs font-mono font-bold backdrop-blur-[2px]">
@@ -1051,8 +1055,11 @@ ${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` 
                 <X className="w-6 h-6" />
               </button>
               <img
-                src={opportunity.poster_url || `https://zenemootech-api.onrender.com/api/opportunities/${opportunity.id}/og-image`}
+                src={toBrandedCdnUrl(opportunity.poster_url) || `https://zenemootech-api.onrender.com/api/opportunities/${opportunity.id}/og-image`}
                 alt={opportunity.title}
+                onError={(e) => {
+                  e.currentTarget.src = toCloudinaryDirectUrl(opportunity.poster_url) || `https://zenemootech-api.onrender.com/api/opportunities/${opportunity.id}/og-image`;
+                }}
                 className="max-w-full max-h-[80vh] object-contain rounded-2xl shadow-2xl border border-white/20"
                 onClick={(e) => e.stopPropagation()}
               />

@@ -2,18 +2,13 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
         xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
 
-  <!-- 1. Zenemoo Homepage Images & Official Logo -->
+  <!-- 1. Zenemoo Official Homepage Assets -->
   <url>
     <loc>https://www.zenemoo.in/</loc>
     <image:image>
       <image:loc>https://www.zenemoo.in/assets/logo.png</image:loc>
       <image:title>Zenemoo Official Logo — Enterprise AI Language &amp; Data Solutions</image:title>
-      <image:caption>Official Brand Logo for Zenemoo (Formerly known as QuantumCoders Data Solution)</image:caption>
-    </image:image>
-    <image:image>
-      <image:loc>https://res.cloudinary.com/rwoe0mm9/image/upload/f_auto,q_auto/v1785185414/zenemoo/team/huq7bbgg3a5rcjpnah0h.jpg</image:loc>
-      <image:title>Prem Prasad Pradhan — Founder &amp; Vendor Manager at Zenemoo</image:title>
-      <image:caption>Founder &amp; Operations Lead for Zenemoo Language &amp; AI Data Solutions</image:caption>
+      <image:caption>Official Brand Logo for Zenemoo (Formerly QuantumCoders Data Solution)</image:caption>
     </image:image>
     <image:image>
       <image:loc>https://www.zenemoo.in/assets/udyam-qr.png</image:loc>
@@ -28,32 +23,134 @@
     <image:image>
       <image:loc>https://www.zenemoo.in/assets/logo.png</image:loc>
       <image:title>Zenemoo Program Opportunities &amp; Careers Portal</image:title>
-      <image:caption>Language Data Annotation &amp; Speech Transcription Jobs</image:caption>
+      <image:caption>AI Data Annotation, Audio Recording &amp; Speech Evaluation Project Opportunities</image:caption>
     </image:image>
   </url>
 
-  <!-- 3. Data Team Directory -->
+  <!-- 3. Dynamic Program Opportunity Posters & Social Cards -->
   <url>
-    <loc>https://www.zenemoo.in/team-directory</loc>
+    <loc>https://www.zenemoo.in/opportunity/f3e5db25-97d9-45ee-8ecd-0cd638670979</loc>
     <image:image>
-      <image:loc>https://res.cloudinary.com/rwoe0mm9/image/upload/f_auto,q_auto/v1785185414/zenemoo/team/huq7bbgg3a5rcjpnah0h.jpg</image:loc>
-      <image:title>Prem Prasad Pradhan — Founder &amp; Vendor Manager</image:title>
-      <image:caption>Zenemoo Language Data Team Roster &amp; AI Annotators</image:caption>
+      <image:loc>https://www.zenemoo.in/cdn/zenemoo/team/trueface-face-image-data-collection-project-3103.png</image:loc>
+      <image:title>[ZEN-IMG-007] TrueFace – Face Image Data Collection Project — Official Project Poster | Zenemoo</image:title>
+      <image:caption>Official project poster for TrueFace – Face Image Data Collection Project (Zenemoo, Work: remote). Zenemoo is inviting participants to join a paid Face Image Data Collection Project. The project involves collecting high-quality, original face images through a mobile application </image:caption>
+    </image:image>
+    <image:image>
+      <image:loc>https://www.zenemoo.in/cdn/zenemoo/og-previews/zenemoo_opp_card_f3e5db25-97d9-45ee-8ecd-0cd638670979.png</image:loc>
+      <image:title>[ZEN-IMG-007] TrueFace – Face Image Data Collection Project — Opportunity Highlights &amp;amp; Requirements Card | Zenemoo</image:title>
+      <image:caption>Project overview card and applicant criteria for TrueFace – Face Image Data Collection Project. Partner: Zenemoo. Apply now on Zenemoo.</image:caption>
     </image:image>
   </url>
 
-  <!-- 4. Support Zenemoo Initiative & Founder Story -->
   <url>
-    <loc>https://www.zenemoo.in/support-zenemooindia</loc>
+    <loc>https://www.zenemoo.in/opportunity/0562723b-abf8-4fa3-b29d-0ca63dee8b24</loc>
     <image:image>
-      <image:loc>https://www.zenemoo.in/assets/founder-story-poster.png</image:loc>
-      <image:title>Prem Prasad Pradhan — Founder &amp; COO of Zenemoo — A Bright Tomorrow, Together</image:title>
-      <image:caption>Technology should create opportunities for everyone. Support Zenemoo growth and AI data initiatives.</image:caption>
+      <image:loc>https://www.zenemoo.in/cdn/zenemoo/team/iphone-live-photo-collection-handwritten-text-8913.jpg</image:loc>
+      <image:title>[ZEN-IMG-009] Paid Data Collection Project – Handwritten Text Photos (India) — Official Project Poster | Zenemoo</image:title>
+      <image:caption>Official project poster for Paid Data Collection Project – Handwritten Text Photos (India) (Zenemoo, Work: remote). Zenemoo is inviting eligible participants in India to take part in the iPhone Live Photo Collection – Handwritten Text Project. Participants must use a compatible Apple device to c</image:caption>
     </image:image>
     <image:image>
-      <image:loc>https://www.zenemoo.in/assets/founder-prem.jpg</image:loc>
-      <image:title>Prem Prasad Pradhan — Founder &amp; COO at Zenemoo</image:title>
-      <image:caption>Building opportunities through technology. Zenemoo Founder Prem Prasad Pradhan.</image:caption>
+      <image:loc>https://www.zenemoo.in/cdn/zenemoo/og-previews/zenemoo_opp_card_0562723b-abf8-4fa3-b29d-0ca63dee8b24.png</image:loc>
+      <image:title>[ZEN-IMG-009] Paid Data Collection Project – Handwritten Text Photos (India) — Opportunity Highlights &amp;amp; Requirements Card | Zenemoo</image:title>
+      <image:caption>Project overview card and applicant criteria for Paid Data Collection Project – Handwritten Text Photos (India). Partner: Zenemoo. Apply now on Zenemoo.</image:caption>
+    </image:image>
+  </url>
+
+  <url>
+    <loc>https://www.zenemoo.in/opportunity/a0d8eb25-0df6-4824-998d-4e6ebcfa07e0</loc>
+    <image:image>
+      <image:loc>https://www.zenemoo.in/cdn/zenemoo/team/multilingual-voice-contributor-program-9932.jpg</image:loc>
+      <image:title>[ZEN-AUD-008] Multilingual Voice Contributor Program — Official Project Poster | Zenemoo</image:title>
+      <image:caption>Official project poster for Multilingual Voice Contributor Program (Zenemoo, Work: remote). Zenemoo is inviting fluent native and proficient speakers to participate in voice recording and language data contribution opportunities supporting real-world AI development. Odia </image:caption>
+    </image:image>
+    <image:image>
+      <image:loc>https://www.zenemoo.in/cdn/zenemoo/og-previews/zenemoo_opp_card_a0d8eb25-0df6-4824-998d-4e6ebcfa07e0.png</image:loc>
+      <image:title>[ZEN-AUD-008] Multilingual Voice Contributor Program — Opportunity Highlights &amp;amp; Requirements Card | Zenemoo</image:title>
+      <image:caption>Project overview card and applicant criteria for Multilingual Voice Contributor Program. Partner: Zenemoo. Apply now on Zenemoo.</image:caption>
+    </image:image>
+  </url>
+
+  <url>
+    <loc>https://www.zenemoo.in/opportunity/e0975e6d-9459-40cb-b513-1e9e6a41ccec</loc>
+    <image:image>
+      <image:loc>https://www.zenemoo.in/cdn/zenemoo/team/paid-odia-voice-recording-project-7515.png</image:loc>
+      <image:title>[ZEN-AUD-006] Paid Odia Voice Recording Project — Official Project Poster | Zenemoo</image:title>
+      <image:caption>Official project poster for Paid Odia Voice Recording Project (Zenemoo, Work: remote). Paid Odia voice recording opportunity for fluent Odia speakers. Selected participants will record provided scripts remotely on the assigned platform and earn ₹150 per hour. Interes</image:caption>
+    </image:image>
+    <image:image>
+      <image:loc>https://www.zenemoo.in/cdn/zenemoo/og-previews/zenemoo_opp_card_e0975e6d-9459-40cb-b513-1e9e6a41ccec.png</image:loc>
+      <image:title>[ZEN-AUD-006] Paid Odia Voice Recording Project — Opportunity Highlights &amp;amp; Requirements Card | Zenemoo</image:title>
+      <image:caption>Project overview card and applicant criteria for Paid Odia Voice Recording Project. Partner: Zenemoo. Apply now on Zenemoo.</image:caption>
+    </image:image>
+  </url>
+
+  <url>
+    <loc>https://www.zenemoo.in/opportunity/767341e1-5d11-4e43-8179-b03e6897c46a</loc>
+    <image:image>
+      <image:loc>https://www.zenemoo.in/cdn/zenemoo/team/indic-language-domain-expert-ai-training-evaluation-9539.jpg</image:loc>
+      <image:title>[ZEN-ANN-005] Indic Language &amp; Domain Expert – AI Training &amp; Evaluation — Official Project Poster | Zenemoo</image:title>
+      <image:caption>Official project poster for Indic Language &amp; Domain Expert – AI Training &amp; Evaluation (Zenemoo, Work: remote). Zenemoo is inviting applications from qualified Indic Language &amp; Domain Experts for a remote, project-based AI training and evaluation opportunity. Selected professionals will cont</image:caption>
+    </image:image>
+    <image:image>
+      <image:loc>https://www.zenemoo.in/cdn/zenemoo/og-previews/zenemoo_opp_card_767341e1-5d11-4e43-8179-b03e6897c46a.png</image:loc>
+      <image:title>[ZEN-ANN-005] Indic Language &amp; Domain Expert – AI Training &amp; Evaluation — Opportunity Highlights &amp;amp; Requirements Card | Zenemoo</image:title>
+      <image:caption>Project overview card and applicant criteria for Indic Language &amp; Domain Expert – AI Training &amp; Evaluation. Partner: Zenemoo. Apply now on Zenemoo.</image:caption>
+    </image:image>
+  </url>
+
+  <url>
+    <loc>https://www.zenemoo.in/opportunity/a157b308-e2e8-4c0b-9e42-638e8f48750d</loc>
+    <image:image>
+      <image:loc>https://www.zenemoo.in/cdn/zenemoo/team/voatbru2b39maitdrkky.png</image:loc>
+      <image:title>[ZEN-AUD-003] Zenemoo × AI Conversation Project — Official Project Poster | Zenemoo</image:title>
+      <image:caption>Official project poster for Zenemoo × AI Conversation Project (Zenemoo, Work: remote). Work from home on a paid AI conversation project. Participate in short, natural conversations that help improve AI understanding of Indian languages. Flexible participation with pa</image:caption>
+    </image:image>
+    <image:image>
+      <image:loc>https://www.zenemoo.in/cdn/zenemoo/og-previews/zenemoo_opp_card_a157b308-e2e8-4c0b-9e42-638e8f48750d.png</image:loc>
+      <image:title>[ZEN-AUD-003] Zenemoo × AI Conversation Project — Opportunity Highlights &amp;amp; Requirements Card | Zenemoo</image:title>
+      <image:caption>Project overview card and applicant criteria for Zenemoo × AI Conversation Project. Partner: Zenemoo. Apply now on Zenemoo.</image:caption>
+    </image:image>
+  </url>
+
+  <url>
+    <loc>https://www.zenemoo.in/opportunity/2df7e880-97ff-42f4-9978-18bd77ca53c7</loc>
+    <image:image>
+      <image:loc>https://www.zenemoo.in/cdn/zenemoo/team/gujarat-field-resource-registration-education-data-collection-6012.jpg</image:loc>
+      <image:title>[ZEN-DATA-004] Gujarat Education Data Collection — Official Project Poster | Zenemoo</image:title>
+      <image:caption>Official project poster for Gujarat Education Data Collection (Zenemoo, Work: remote). We are building a district-wise resource network for an upcoming education data collection initiative across government schools in Gujarat. The field activity will involve scripted</image:caption>
+    </image:image>
+    <image:image>
+      <image:loc>https://www.zenemoo.in/cdn/zenemoo/og-previews/zenemoo_opp_card_2df7e880-97ff-42f4-9978-18bd77ca53c7.png</image:loc>
+      <image:title>[ZEN-DATA-004] Gujarat Education Data Collection — Opportunity Highlights &amp;amp; Requirements Card | Zenemoo</image:title>
+      <image:caption>Project overview card and applicant criteria for Gujarat Education Data Collection. Partner: Zenemoo. Apply now on Zenemoo.</image:caption>
+    </image:image>
+  </url>
+
+  <url>
+    <loc>https://www.zenemoo.in/opportunity/aa772601-f8f0-4307-baea-1dbed15cb662</loc>
+    <image:image>
+      <image:loc>https://www.zenemoo.in/cdn/zenemoo/team/fslm18dnboc9yayzxmdv.jpg</image:loc>
+      <image:title>[ZEN-GEN-001] Zenemoo × Karya — Official Project Poster | Zenemoo</image:title>
+      <image:caption>Official project poster for Zenemoo × Karya (Karya Pvt. Ltd., Work: remote). Join the Karya × QuantumCoders AI Language Contributor Program and work on speech recording, transcription, validation, language annotation, and AI dataset creation projects. Help </image:caption>
+    </image:image>
+    <image:image>
+      <image:loc>https://www.zenemoo.in/cdn/zenemoo/og-previews/zenemoo_opp_card_aa772601-f8f0-4307-baea-1dbed15cb662.png</image:loc>
+      <image:title>[ZEN-GEN-001] Zenemoo × Karya — Opportunity Highlights &amp;amp; Requirements Card | Zenemoo</image:title>
+      <image:caption>Project overview card and applicant criteria for Zenemoo × Karya. Partner: Karya Pvt. Ltd.. Apply now on Zenemoo.</image:caption>
+    </image:image>
+  </url>
+
+  <url>
+    <loc>https://www.zenemoo.in/opportunity/943d4fbf-c162-45e4-8559-ef283bdb9280</loc>
+    <image:image>
+      <image:loc>https://www.zenemoo.in/cdn/zenemoo/team/z2wsjkw9fwbtax6w7z5e.jpg</image:loc>
+      <image:title>[ZEN-ANN-002] Zenemoo × DesiCrew — Official Project Poster | Zenemoo</image:title>
+      <image:caption>Official project poster for Zenemoo × DesiCrew (DesiCrew Solutions, Work: remote). Join QuantumCoders Data Solutions (QCDS) as an Odia Language Contributor in collaboration with DesiCrew. Work on enterprise AI transcription, subtitle creation, speech annotation, </image:caption>
+    </image:image>
+    <image:image>
+      <image:loc>https://www.zenemoo.in/cdn/zenemoo/og-previews/zenemoo_opp_card_943d4fbf-c162-45e4-8559-ef283bdb9280.png</image:loc>
+      <image:title>[ZEN-ANN-002] Zenemoo × DesiCrew — Opportunity Highlights &amp;amp; Requirements Card | Zenemoo</image:title>
+      <image:caption>Project overview card and applicant criteria for Zenemoo × DesiCrew. Partner: DesiCrew Solutions. Apply now on Zenemoo.</image:caption>
     </image:image>
   </url>
 

@@ -22,6 +22,8 @@ Allow: /app/
 Allow: /app/android
 Allow: /downloads/
 Allow: /assets/
+Allow: /cdn/
+Allow: /cdn/*
 Allow: /favicon.ico
 Allow: /favicon.png
 Allow: /manifest.json
@@ -47,6 +49,8 @@ Allow: /app/
 Allow: /app/android
 Allow: /downloads/
 Allow: /assets/
+Allow: /cdn/
+Allow: /cdn/*
 Allow: /favicon.ico
 Allow: /favicon.png
 Allow: /manifest.json

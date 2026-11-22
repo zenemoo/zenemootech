@@ -44,6 +44,8 @@ import { AdminQrCodeStudioTab } from './AdminQrCodeStudioTab';
 import { AdminInvoicesTab } from './invoices/AdminInvoicesTab';
 import { AdminStaffIdCardGeneratorTab } from './AdminStaffIdCardGeneratorTab';
 import { AdminPrivateDocumentsVault } from './AdminPrivateDocumentsVault';
+import { AdminImageSitemapTab } from './AdminImageSitemapTab';
+import { toBrandedCdnUrl, toCloudinaryDirectUrl } from '../lib/cdnHelper';
 import { syncGlobalContactsDirectoryOncePerDay } from '../utils/recentContactsService';
 
 export type AdminTabType =
@@ -82,9 +84,11 @@ export type AdminTabType =
   | 'qr-studio'
   | 'invoices'
   | 'staff-id-cards'
-  | 'private-documents';
+  | 'private-documents'
+  | 'image-sitemap';
 
 export const VALID_ADMIN_TABS: AdminTabType[] = [
+  'image-sitemap',
   'notifications',
   'team',
   'directory',
@@ -3012,6 +3016,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         { id: 'announcements', name: 'Announcements', icon: Megaphone },
         { id: 'telemetry', name: 'Site Settings & Branding', icon: Globe, count: hasCustomLogo ? 'Y' : 'N' },
         { id: 'portfolio', name: 'Company Portfolio', icon: FileText },
+        { id: 'image-sitemap', name: 'Image Sitemap & CDN', icon: Image, count: opportunitiesList.filter((o) => !!o.poster_url).length },
       ],
     },
   ];
@@ -5662,8 +5667,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                       <div className="flex items-start gap-3">
                         {op.poster_url ? (
                           <img
-                            src={op.poster_url}
+                            src={toBrandedCdnUrl(op.poster_url)}
                             alt={op.title}
+                            onError={(e) => {
+                              e.currentTarget.src = toCloudinaryDirectUrl(op.poster_url);
+                            }}
                             className="w-12 h-14 object-cover rounded-lg border border-white/10 shrink-0"
                           />
                         ) : (
@@ -7291,6 +7299,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         {activeTab === 'portfolio' && (
           <div className="space-y-8 font-sans">
             <AdminPortfolioSettings />
+          </div>
+        )}
+
+        {/* TAB: IMAGE SITEMAP & BRANDED CDN MANAGEMENT */}
+        {activeTab === 'image-sitemap' && (
+          <div className="space-y-8 font-sans">
+            <AdminImageSitemapTab
+              opportunities={opportunitiesList}
+              onRefreshOpportunities={loadOpportunitiesData}
+            />
           </div>
         )}
 

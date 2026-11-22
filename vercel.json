@@ -2,6 +2,14 @@
   "version": 2,
   "rewrites": [
     {
+      "source": "/cdn/:path*",
+      "destination": "/api/cdn?path=:path*"
+    },
+    {
+      "source": "/image-sitemap.xml",
+      "destination": "/api/image-sitemap"
+    },
+    {
       "source": "/opportunity/:id",
       "has": [
         {
@@ -13,7 +21,7 @@
       "destination": "/api/opportunity-og?id=:id"
     },
     {
-      "source": "/((?!api/.*|assets/.*|favicon.*|sitemap.*\\.xml|robots.txt).*)",
+      "source": "/((?!api/.*|cdn/.*|assets/.*|favicon.*|sitemap.*\\.xml|image-sitemap\\.xml|robots.txt).*)",
       "destination": "/index.html"
     }
   ]

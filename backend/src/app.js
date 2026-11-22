@@ -44,6 +44,7 @@ import staffIdCardRoutes from './routes/staffIdCardRoutes.js';
 import privateDocumentRoutes from './routes/privateDocumentRoutes.js';
 import { kvShortenerService } from './services/kvShortenerService.js';
 import { handleCashfreeWebhook } from './controllers/supportPaymentController.js';
+import { proxyCdnImage, getImageSitemap } from './controllers/sitemapController.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
@@ -190,6 +191,10 @@ app.get(['/downloads/zenemoo-latest.apk', '/downloads/:filename', '/api/download
   }
   next();
 });
+
+// Edge-Cached Branded Image CDN Proxy & Dynamic Google Image Sitemap
+app.get('/cdn/*', proxyCdnImage);
+app.get('/image-sitemap.xml', getImageSitemap);
 
 // Mounting API Routes under /api
 app.use('/api/auth', authRoutes);
