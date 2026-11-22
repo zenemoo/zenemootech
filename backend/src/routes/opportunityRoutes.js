@@ -7,6 +7,8 @@ import {
   reorderOpportunity,
   deleteOpportunity,
   getNextProjectCodePreview,
+  getOpportunityOgImage,
+  getOpportunityShareCard,
 } from '../controllers/opportunityController.js';
 import { verifyToken, requireRole } from '../middleware/rbacMiddleware.js';
 
@@ -17,6 +19,10 @@ router.get('/', getOpportunities);
 
 // Auto-generated next Project ID preview helper
 router.get('/next-code', verifyToken, requireRole(['admin']), getNextProjectCodePreview);
+
+// Public Social Share & Open Graph Card Image generator (Design 2 Minimalist Obsidian)
+router.get('/:id/og-image', getOpportunityOgImage);
+router.get('/:id/share-card', getOpportunityShareCard);
 
 // Admin-only management endpoints
 router.get('/admin/all', verifyToken, requireRole(['admin']), getAdminOpportunities);

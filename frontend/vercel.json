@@ -2,6 +2,17 @@
   "version": 2,
   "rewrites": [
     {
+      "source": "/opportunity/:id",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(facebookexternalhit|WhatsApp|TelegramBot|Twitterbot|LinkedInBot|Slackbot|Discordbot|SkypeUriPreview|Google-Structured-Data-Testing-Tool|vkShare|W3C_Validator).*"
+        }
+      ],
+      "destination": "/api/opportunity-og?id=:id"
+    },
+    {
       "source": "/((?!api/.*|assets/.*|favicon.*|sitemap.*\\.xml|robots.txt).*)",
       "destination": "/index.html"
     }

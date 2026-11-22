@@ -1,6 +1,7 @@
 import { supabase } from '../config/supabase.js';
 import { ensureOpportunitySheetExists } from '../services/googleSheetsService.js';
 import { sendZenemooNotification } from '../services/pushNotificationEngine.js';
+import { getOrGenerateOpportunityOgImageUrl, generateOpportunitySvg } from '../services/opportunityOgImageService.js';
 
 // In-Memory Public Cache (3-Minute TTL)
 let opportunitiesCache = {
@@ -278,6 +279,11 @@ export const createOpportunity = async (req, res) => {
 
     const createdRecord = data[0];
 
+    // Asynchronously pre-generate and warm Design 2 Social Card on Cloudinary
+    getOrGenerateOpportunityOgImageUrl(createdRecord).catch((imgErr) => {
+      console.warn('[Social OG Image Prewarm Note]:', imgErr.message);
+    });
+
     // Asynchronously pre-create dedicated sheet tab in Google Sheets for this new project
     ensureOpportunitySheetExists(createdRecord).catch((sheetErr) => {
       console.warn('[Google Sheets Ensure Sheet Note]:', sheetErr.message);
@@ -334,6 +340,13 @@ export const updateOpportunity = async (req, res) => {
     }
 
     const updatedRecord = data[0];
+
+    // Asynchronously refresh Design 2 Social Card on Cloudinary with updated details
+    if (updatedRecord) {
+      getOrGenerateOpportunityOgImageUrl(updatedRecord).catch((imgErr) => {
+        console.warn('[Social OG Image Refresh Note]:', imgErr.message);
+      });
+    }
 
     // Pre-create/verify dedicated sheet tab in Google Sheets
     if (updatedRecord) {
@@ -418,6 +431,93 @@ export const deleteOpportunity = async (req, res) => {
     return res.json({ status: 'success', opportunities: fullList });
   } catch (err) {
     console.error('deleteOpportunity controller exception:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+// 6. GET OPPORTUNITY OPEN GRAPH PREVIEW IMAGE (Design 2 Minimalist Obsidian)
+export const getOpportunityOgImage = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) return res.redirect(302, 'https://www.zenemoo.in/assets/logo.png');
+
+    let opp = null;
+    if (opportunitiesCache.data) {
+      opp = opportunitiesCache.data.find((o) => o.id === id || o.public_id === id);
+    }
+    if (!opp) {
+      const { data, error } = await supabase
+        .from('opportunities')
+        .select(OPPORTUNITY_PUBLIC_COLUMNS)
+        .or(`id.eq.${id},public_id.eq.${id}`)
+        .maybeSingle();
+      if (!error && data) opp = data;
+    }
+
+    if (!opp) {
+      return res.redirect(302, 'https://www.zenemoo.in/assets/logo.png');
+    }
+
+    if (req.query.format === 'svg') {
+      const svg = generateOpportunitySvg(opp);
+      res.setHeader('Content-Type', 'image/svg+xml');
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      return res.send(svg);
+    }
+
+    const cdnUrl = await getOrGenerateOpportunityOgImageUrl(opp);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    return res.redirect(302, cdnUrl);
+  } catch (err) {
+    console.error('getOpportunityOgImage error:', err.message);
+    return res.redirect(302, 'https://www.zenemoo.in/assets/logo.png');
+  }
+};
+
+// 7. GET OPPORTUNITY SHARE CARD METADATA & PREVIEW (Public API for Sharing UI)
+export const getOpportunityShareCard = async (req, res) => {
+  try {
+    const { id } = req.params;
+    let opp = null;
+    if (opportunitiesCache.data) {
+      opp = opportunitiesCache.data.find((o) => o.id === id || o.public_id === id);
+    }
+    if (!opp) {
+      const { data, error } = await supabase
+        .from('opportunities')
+        .select(OPPORTUNITY_PUBLIC_COLUMNS)
+        .or(`id.eq.${id},public_id.eq.${id}`)
+        .maybeSingle();
+      if (!error && data) opp = data;
+    }
+
+    if (!opp) {
+      return res.status(404).json({ error: 'Opportunity not found' });
+    }
+
+    const ogImageUrl = await getOrGenerateOpportunityOgImageUrl(opp);
+    const projectCode = opp.public_id || '';
+    const pageUrl = `https://www.zenemoo.in/opportunity/${opp.id}`;
+    const shareText = `🚀 ZENEMOO Program Opportunity:${projectCode ? ` [${projectCode}]` : ''}
+📌 ${opp.title} (Partner: ${opp.partner_name || 'Zenemoo'})
+💼 Work Mode: ${opp.work_mode || 'Remote WFH'}
+${opp.payment_info ? `💰 Compensation: ${opp.payment_info}\n` : ''}Apply now on Zenemoo: ${pageUrl}`;
+
+    return res.json({
+      status: 'success',
+      data: {
+        id: opp.id,
+        title: opp.title,
+        project_code: projectCode,
+        partner_name: opp.partner_name,
+        work_mode: opp.work_mode,
+        og_image_url: ogImageUrl,
+        share_text: shareText,
+        share_url: pageUrl,
+      },
+    });
+  } catch (err) {
+    console.error('getOpportunityShareCard error:', err.message);
     return res.status(500).json({ error: err.message });
   }
 };
