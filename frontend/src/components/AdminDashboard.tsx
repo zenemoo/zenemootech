@@ -2262,8 +2262,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       role: editingMember.designation || editingMember.role || 'Specialist',
       badge: editingMember.badge || 'Specialist',
       email: editingMember.email || '',
-      image_url: editingMember.image_url || editingMember.image || '/assets/executive.png',
-      image: editingMember.image_url || editingMember.image || '/assets/executive.png',
+      image_url: toBrandedCdnUrl(editingMember.image_url || editingMember.image || '/assets/executive.png'),
+      image: toBrandedCdnUrl(editingMember.image_url || editingMember.image || '/assets/executive.png'),
       skills: parsedSkills.length > 0 ? parsedSkills : ['Specialist'],
     };
 
@@ -2286,8 +2286,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
     setIsUploading(true);
     try {
       const url = await uploadImageToCloudinary(file, 'zenemoo/team');
-      setEditingMember({ ...editingMember, image_url: url, image: url });
-      showStatus('Image uploaded to Cloudinary CDN (zenemoo/team)!');
+      const branded = toBrandedCdnUrl(url);
+      setEditingMember({ ...editingMember, image_url: branded, image: branded });
+      showStatus('Image uploaded & converted to Branded CDN (zenemoo/team)!');
     } catch (err: any) {
       alert('Upload failed: ' + (err.message || 'Error uploading file'));
     } finally {
@@ -3016,7 +3017,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         { id: 'announcements', name: 'Announcements', icon: Megaphone },
         { id: 'telemetry', name: 'Site Settings & Branding', icon: Globe, count: hasCustomLogo ? 'Y' : 'N' },
         { id: 'portfolio', name: 'Company Portfolio', icon: FileText },
-        { id: 'image-sitemap', name: 'Image Sitemap & CDN', icon: Image, count: opportunitiesList.filter((o) => !!o.poster_url).length },
+        { id: 'image-sitemap', name: 'Image Sitemap & CDN', icon: Image, count: opportunitiesList.filter((o) => !!o.poster_url).length + teamList.filter((m) => !!m.image_url || !!(m as any).image).length },
       ],
     },
   ];
@@ -4941,27 +4942,57 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                     />
                   </div>
 
-                  {/* Cloudinary Image Upload */}
+                  {/* Branded CDN & Cloudinary Image Upload */}
                   <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 space-y-3">
-                    <label className="block text-xs font-mono text-cyan-300 font-bold flex items-center gap-2">
-                      <Cloud className="w-4 h-4" /> Cloudinary Image Uploader (Folder: zenemoo/team)
-                    </label>
-                    <div className="flex items-center gap-4">
-                      <div className="w-16 h-16 rounded-2xl bg-slate-900 border border-white/10 overflow-hidden shrink-0">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-mono text-cyan-300 font-bold flex items-center gap-2">
+                        <Cloud className="w-4 h-4" /> Team Portrait (Folder: zenemoo/team)
+                      </label>
+                      {(editingMember.image_url || editingMember.image) && (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                          ✓ In image-sitemap.xml
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-start gap-4">
+                      <div className="w-16 h-16 rounded-2xl bg-slate-900 border border-white/10 overflow-hidden shrink-0 shadow-md">
                         {editingMember.image_url || editingMember.image ? (
-                          <img src={editingMember.image_url || editingMember.image} alt="Preview" className="w-full h-full object-cover" />
+                          <img
+                            src={toBrandedCdnUrl(editingMember.image_url || editingMember.image)}
+                            alt="Preview"
+                            onError={(e) => {
+                              e.currentTarget.src = toCloudinaryDirectUrl(editingMember.image_url || editingMember.image) || '/assets/executive.png';
+                            }}
+                            className="w-full h-full object-cover"
+                          />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center text-xs text-slate-500 font-mono">No Image</div>
                         )}
                       </div>
                       <div className="flex-1 space-y-2">
-                        <input
-                          type="url"
-                          placeholder="https://res.cloudinary.com/rwoe0mm9/image/upload/zenemoo/team/..."
-                          value={editingMember.image_url || editingMember.image}
-                          onChange={(e) => setEditingMember({ ...editingMember, image_url: e.target.value, image: e.target.value })}
-                          className="w-full px-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-white text-xs font-mono focus:outline-none focus:border-cyan-400"
-                        />
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="url"
+                            placeholder="Paste https://res.cloudinary.com/... or https://www.zenemoo.in/cdn/..."
+                            value={editingMember.image_url || editingMember.image}
+                            onChange={(e) => {
+                              const val = e.target.value.trim();
+                              const converted = val.includes('cloudinary.com') ? toBrandedCdnUrl(val) : val;
+                              setEditingMember({ ...editingMember, image_url: converted, image: converted });
+                            }}
+                            className="flex-1 px-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-white text-xs font-mono focus:outline-none focus:border-cyan-400"
+                          />
+                          {(editingMember.image_url || editingMember.image) && (
+                            <button
+                              type="button"
+                              onClick={() => setEditingMember({ ...editingMember, image_url: '', image: '' })}
+                              className="px-2.5 py-2 rounded-xl bg-white/5 hover:bg-rose-500/20 text-slate-400 hover:text-rose-300 border border-white/10 text-xs font-mono transition-all cursor-pointer"
+                              title="Clear photo"
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
                         <label className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-purple-500/20 border border-purple-500/40 text-purple-300 text-xs font-mono cursor-pointer hover:bg-purple-500/30 transition-all">
                           <Upload className="w-3.5 h-3.5" />
                           {isUploading ? 'Uploading to Cloudinary CDN...' : 'Upload Image File'}
@@ -4969,6 +5000,51 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                         </label>
                       </div>
                     </div>
+
+                    {/* Dual-Link Branded CDN & Cloudinary Origin Detail Box */}
+                    {(editingMember.image_url || editingMember.image) && (() => {
+                      const raw = editingMember.image_url || editingMember.image;
+                      const branded = toBrandedCdnUrl(raw);
+                      const direct = toCloudinaryDirectUrl(raw);
+
+                      return (
+                        <div className="mt-2 p-3 rounded-xl bg-black/40 border border-cyan-500/20 space-y-2 font-mono text-[11px]">
+                          <div className="flex items-center justify-between">
+                            <span className="text-cyan-300 font-bold flex items-center gap-1">
+                              <Sparkles className="w-3 h-3" /> Branded CDN URL (Google Image Indexed)
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(branded);
+                                showStatus('Copied Branded CDN URL!');
+                              }}
+                              className="text-cyan-400 hover:text-cyan-200 flex items-center gap-1 cursor-pointer"
+                            >
+                              <Copy className="w-3 h-3" /> Copy CDN
+                            </button>
+                          </div>
+                          <p className="text-slate-300 truncate select-all">{branded}</p>
+
+                          <div className="flex items-center justify-between pt-1 border-t border-white/5">
+                            <span className="text-slate-400 font-bold flex items-center gap-1">
+                              <Layers className="w-3 h-3 text-purple-400" /> Cloudinary Origin URL
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(direct);
+                                showStatus('Copied Cloudinary Origin URL!');
+                              }}
+                              className="text-purple-400 hover:text-purple-200 flex items-center gap-1 cursor-pointer"
+                            >
+                              <Copy className="w-3 h-3" /> Copy Origin
+                            </button>
+                          </div>
+                          <p className="text-slate-400 truncate select-all">{direct}</p>
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   <div>
@@ -7307,7 +7383,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
           <div className="space-y-8 font-sans">
             <AdminImageSitemapTab
               opportunities={opportunitiesList}
+              teamMembers={teamList}
               onRefreshOpportunities={loadOpportunitiesData}
+              onRefreshTeam={loadTeamData}
             />
           </div>
         )}

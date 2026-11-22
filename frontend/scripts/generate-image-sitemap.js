@@ -30,6 +30,7 @@ function toBrandedCdnUrl(url) {
 function xmlEscape(str) {
   if (!str) return '';
   return String(str)
+    .replace(/&amp;/g, '&')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -38,20 +39,30 @@ function xmlEscape(str) {
 }
 
 async function run() {
-  console.log('🔄 Fetching live opportunities for image-sitemap.xml generation...');
+  console.log('🔄 Fetching live opportunities & team members for image-sitemap.xml generation...');
   let opportunities = [];
+  let teamMembers = [];
+
   try {
-    const res = await fetch('https://zenemootech-api.onrender.com/api/opportunities', {
-      headers: { 'User-Agent': 'Zenemoo-Build-Sitemap-Generator/1.0' },
-    });
-    if (res.ok) {
-      const json = await res.json();
-      if (json && Array.isArray(json.data)) {
-        opportunities = json.data;
-      }
+    const [oppRes, teamRes] = await Promise.all([
+      fetch('https://zenemootech-api.onrender.com/api/opportunities', {
+        headers: { 'User-Agent': 'Zenemoo-Build-Sitemap-Generator/1.0' },
+      }),
+      fetch('https://zenemootech-api.onrender.com/api/team', {
+        headers: { 'User-Agent': 'Zenemoo-Build-Sitemap-Generator/1.0' },
+      }),
+    ]);
+
+    if (oppRes.ok) {
+      const json = await oppRes.json();
+      if (json && Array.isArray(json.data)) opportunities = json.data;
+    }
+    if (teamRes.ok) {
+      const json = await teamRes.json();
+      if (json && Array.isArray(json.data)) teamMembers = json.data;
     }
   } catch (err) {
-    console.warn('⚠️ Could not fetch opportunities from API for static sitemap:', err.message);
+    console.warn('⚠️ Could not fetch from API for static sitemap:', err.message);
   }
 
   let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
@@ -99,7 +110,6 @@ async function run() {
     xml += `  <url>\n`;
     xml += `    <loc>https://www.zenemoo.in/opportunity/${xmlEscape(cleanId)}</loc>\n`;
 
-    // Official Poster Banner if available
     if (opp.poster_url) {
       const cdnPosterUrl = toBrandedCdnUrl(opp.poster_url);
       xml += `    <image:image>\n`;
@@ -109,7 +119,6 @@ async function run() {
       xml += `    </image:image>\n`;
     }
 
-    // Design 2 Social Card Image
     const cardUrl = `https://www.zenemoo.in/cdn/zenemoo/og-previews/zenemoo_opp_card_${cleanId.replace(/[^a-zA-Z0-9_-]/g, '_')}.png`;
     xml += `    <image:image>\n`;
     xml += `      <image:loc>${xmlEscape(cardUrl)}</image:loc>\n`;
@@ -120,12 +129,43 @@ async function run() {
     xml += `  </url>\n\n`;
   }
 
+  // 4. Team Directory & Individual Member Profiles
+  xml += `  <!-- 4. Team Directory & Individual Member Profiles -->\n`;
+  xml += `  <url>\n`;
+  xml += `    <loc>https://www.zenemoo.in/team-directory</loc>\n`;
+  xml += `    <image:image>\n`;
+  xml += `      <image:loc>https://www.zenemoo.in/assets/logo.png</image:loc>\n`;
+  xml += `      <image:title>Zenemoo Official Team Directory — Specialized AI Language &amp; Data Team</image:title>\n`;
+  xml += `      <image:caption>Executive leadership, language consultants, and specialized AI data collection team at Zenemoo.</image:caption>\n`;
+  xml += `    </image:image>\n`;
+  xml += `  </url>\n\n`;
+
+  for (const member of teamMembers) {
+    if (!member || (!member.image_url && !member.image)) continue;
+    const rawImage = member.image_url || member.image;
+    const cdnImageUrl = toBrandedCdnUrl(rawImage);
+    const name = member.name || 'Team Member';
+    const role = member.designation || 'Specialist';
+    const dept = member.department || 'Data Operations';
+    const slugOrId = member.slug || member.id;
+    const bio = (member.bio || '').replace(/\s+/g, ' ').substring(0, 160);
+
+    xml += `  <url>\n`;
+    xml += `    <loc>https://www.zenemoo.in/team/${xmlEscape(slugOrId)}</loc>\n`;
+    xml += `    <image:image>\n`;
+    xml += `      <image:loc>${xmlEscape(cdnImageUrl)}</image:loc>\n`;
+    xml += `      <image:title>${xmlEscape(`${name} — ${role} | Zenemoo Language & Data Solutions`)}</image:title>\n`;
+    xml += `      <image:caption>${xmlEscape(`Official portrait of ${name}, ${role} (${dept}) at Zenemoo. ${bio}`)}</image:caption>\n`;
+    xml += `    </image:image>\n`;
+    xml += `  </url>\n\n`;
+  }
+
   xml += `</urlset>\n`;
 
   const publicDir = path.resolve(__dirname, '../public');
   const sitemapPath = path.join(publicDir, 'image-sitemap.xml');
   fs.writeFileSync(sitemapPath, xml, 'utf8');
-  console.log(`✅ Generated image-sitemap.xml successfully with ${opportunities.length} opportunities at: ${sitemapPath}`);
+  console.log(`✅ Generated image-sitemap.xml successfully with ${opportunities.length} opportunities and ${teamMembers.length} team members at: ${sitemapPath}`);
 }
 
 run();

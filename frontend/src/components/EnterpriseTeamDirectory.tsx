@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { directoryApi, pendingProfileUpdatesApi } from '../services/api';
 import { ExportButton } from './ExportButton';
+import { toBrandedCdnUrl, toCloudinaryDirectUrl } from '../lib/cdnHelper';
 
 export interface PendingPhotoRequest {
   id: string;
@@ -361,8 +362,11 @@ export const EnterpriseTeamDirectory: React.FC<EnterpriseTeamDirectoryProps> = (
                 <div className="flex items-start justify-between gap-3 relative">
                   <div className="flex items-center gap-3 min-w-0">
                     <img
-                      src={member.photo}
+                      src={toBrandedCdnUrl(member.photo)}
                       alt={member.name}
+                      onError={(e) => {
+                        e.currentTarget.src = toCloudinaryDirectUrl(member.photo) || '/assets/executive.png';
+                      }}
                       className="w-14 h-14 rounded-2xl object-cover border border-cyan-400/60 group-hover:scale-105 transition-transform shrink-0"
                     />
                     <div className="truncate min-w-0">
@@ -453,8 +457,11 @@ export const EnterpriseTeamDirectory: React.FC<EnterpriseTeamDirectoryProps> = (
             <div className="flex items-start justify-between border-b border-white/10 pb-4">
               <div className="flex items-center gap-4 min-w-0">
                 <img
-                  src={selectedMember.photo}
+                  src={toBrandedCdnUrl(selectedMember.photo)}
                   alt={selectedMember.name}
+                  onError={(e) => {
+                    e.currentTarget.src = toCloudinaryDirectUrl(selectedMember.photo) || '/assets/executive.png';
+                  }}
                   className="w-16 h-16 rounded-2xl object-cover border-2 border-cyan-400 shadow-xl shrink-0"
                 />
                 <div className="space-y-1 min-w-0">

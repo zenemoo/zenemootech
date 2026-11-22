@@ -29,6 +29,7 @@ function toBrandedCdnUrl(url) {
 function xmlEscape(str) {
   if (!str) return '';
   return String(str)
+    .replace(/&amp;/g, '&')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -39,17 +40,26 @@ function xmlEscape(str) {
 export default async function handler(req, res) {
   try {
     let opportunities = [];
+    let teamMembers = [];
 
-    // Fetch live opportunities from backend API
+    // Fetch live opportunities and team members from backend API
     try {
-      const apiRes = await fetch('https://zenemootech-api.onrender.com/api/opportunities', {
-        headers: { 'User-Agent': 'Zenemoo-Sitemap-Generator/1.0' },
-      });
-      if (apiRes.ok) {
-        const json = await apiRes.json();
-        if (json && Array.isArray(json.data)) {
-          opportunities = json.data;
-        }
+      const [oppRes, teamRes] = await Promise.all([
+        fetch('https://zenemootech-api.onrender.com/api/opportunities', {
+          headers: { 'User-Agent': 'Zenemoo-Sitemap-Generator/1.0' },
+        }),
+        fetch('https://zenemootech-api.onrender.com/api/team', {
+          headers: { 'User-Agent': 'Zenemoo-Sitemap-Generator/1.0' },
+        }),
+      ]);
+
+      if (oppRes.ok) {
+        const json = await oppRes.json();
+        if (json && Array.isArray(json.data)) opportunities = json.data;
+      }
+      if (teamRes.ok) {
+        const json = await teamRes.json();
+        if (json && Array.isArray(json.data)) teamMembers = json.data;
       }
     } catch (e) {
       console.warn('[Image Sitemap API Fetch Warning]:', e.message);
@@ -100,7 +110,6 @@ export default async function handler(req, res) {
       xml += `  <url>\n`;
       xml += `    <loc>https://www.zenemoo.in/opportunity/${xmlEscape(cleanId)}</loc>\n`;
 
-      // Official Poster Banner if available
       if (opp.poster_url) {
         const cdnPosterUrl = toBrandedCdnUrl(opp.poster_url);
         xml += `    <image:image>\n`;
@@ -110,7 +119,6 @@ export default async function handler(req, res) {
         xml += `    </image:image>\n`;
       }
 
-      // Design 2 Social Card Image
       const cardUrl = `https://www.zenemoo.in/cdn/zenemoo/og-previews/zenemoo_opp_card_${cleanId.replace(/[^a-zA-Z0-9_-]/g, '_')}.png`;
       xml += `    <image:image>\n`;
       xml += `      <image:loc>${xmlEscape(cardUrl)}</image:loc>\n`;
@@ -118,6 +126,37 @@ export default async function handler(req, res) {
       xml += `      <image:caption>${xmlEscape(`Project overview card and applicant criteria for ${title}. Partner: ${partner}. Apply now on Zenemoo.`)}</image:caption>\n`;
       xml += `    </image:image>\n`;
 
+      xml += `  </url>\n\n`;
+    }
+
+    // 4. Team Directory & Individual Member Profiles
+    xml += `  <!-- 4. Team Directory & Individual Member Profiles -->\n`;
+    xml += `  <url>\n`;
+    xml += `    <loc>https://www.zenemoo.in/team-directory</loc>\n`;
+    xml += `    <image:image>\n`;
+    xml += `      <image:loc>https://www.zenemoo.in/assets/logo.png</image:loc>\n`;
+    xml += `      <image:title>Zenemoo Official Team Directory — Specialized AI Language &amp; Data Team</image:title>\n`;
+    xml += `      <image:caption>Executive leadership, language consultants, and specialized AI data collection team at Zenemoo.</image:caption>\n`;
+    xml += `    </image:image>\n`;
+    xml += `  </url>\n\n`;
+
+    for (const member of teamMembers) {
+      if (!member || (!member.image_url && !member.image)) continue;
+      const rawImage = member.image_url || member.image;
+      const cdnImageUrl = toBrandedCdnUrl(rawImage);
+      const name = member.name || 'Team Member';
+      const role = member.designation || 'Specialist';
+      const dept = member.department || 'Data Operations';
+      const slugOrId = member.slug || member.id;
+      const bio = (member.bio || '').replace(/\s+/g, ' ').substring(0, 160);
+
+      xml += `  <url>\n`;
+      xml += `    <loc>https://www.zenemoo.in/team/${xmlEscape(slugOrId)}</loc>\n`;
+      xml += `    <image:image>\n`;
+      xml += `      <image:loc>${xmlEscape(cdnImageUrl)}</image:loc>\n`;
+      xml += `      <image:title>${xmlEscape(`${name} — ${role} | Zenemoo Language & Data Solutions`)}</image:title>\n`;
+      xml += `      <image:caption>${xmlEscape(`Official portrait of ${name}, ${role} (${dept}) at Zenemoo. ${bio}`)}</image:caption>\n`;
+      xml += `    </image:image>\n`;
       xml += `  </url>\n\n`;
     }
 

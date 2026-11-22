@@ -31,6 +31,7 @@ import { Footer } from './Footer';
 import { CursorSpotlight } from './CursorSpotlight';
 import { ThreeNeuralBackground } from './ThreeNeuralBackground';
 import { SeoImage } from '../seo/components/SeoImage';
+import { toBrandedCdnUrl } from '../lib/cdnHelper';
 
 interface TeamMemberProfilePageProps {
   slug: string;
@@ -77,7 +78,7 @@ export const TeamMemberProfilePage: React.FC<TeamMemberProfilePageProps> = ({
     const pageTitle = `${member.name} | ${member.designation || 'Data & AI Specialist'} | Zenemoo`;
     const pageDescription = member.bio || `${member.name} is a key team member at Zenemoo AI Data Solutions.`;
     const profileUrl = `https://www.zenemoo.in/team/${member.slug || getSlugFromName(member.name)}`;
-    const imageUrl = member.image_url || 'https://www.zenemoo.in/assets/logo.png';
+    const imageUrl = toBrandedCdnUrl(member.image_url || member.image) || 'https://www.zenemoo.in/assets/logo.png';
 
     document.title = pageTitle;
 
@@ -342,7 +343,7 @@ export const TeamMemberProfilePage: React.FC<TeamMemberProfilePageProps> = ({
                 {/* Avatar Photo Card */}
                 <div className="relative w-full max-w-xs aspect-[4/5] rounded-2xl overflow-hidden border-2 border-cyan-500/30 p-1 bg-gradient-to-b from-cyan-500/20 via-purple-500/20 to-transparent shadow-2xl group">
                   <SeoImage
-                    src={member.image_url || member.image || member.fallback || '/assets/executive.png'}
+                    src={toBrandedCdnUrl(member.image_url || member.image) || member.fallback || '/assets/executive.png'}
                     alt={`${member.name} — ${member.designation || member.role} at Zenemoo`}
                     fallbackSrc={member.fallback || '/assets/executive.png'}
                     priority={true}

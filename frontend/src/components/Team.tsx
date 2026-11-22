@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Users, Star, UserCheck, Mail, ArrowRight, Sparkles } from 'lucide-react';
 import { TeamMember, getStoredTeamMembers, getSlugFromName } from '../lib/teamStore';
 import { SeoImage } from '../seo/components/SeoImage';
+import { toBrandedCdnUrl } from '../lib/cdnHelper';
 
 export const Team: React.FC = () => {
   const [members, setMembers] = useState<TeamMember[]>([]);
@@ -94,7 +95,7 @@ export const Team: React.FC = () => {
                     {/* Profile Image */}
                     <div className="relative h-48 rounded-2xl overflow-hidden mb-4 border border-white/10 group-hover:border-cyan-500/40 transition-colors bg-slate-900">
                       <SeoImage
-                        src={member.image_url || member.image || member.fallback || '/assets/executive.png'}
+                        src={toBrandedCdnUrl(member.image_url || member.image) || member.fallback || '/assets/executive.png'}
                         alt={`${member.name}, ${member.designation || member.role} at Zenemoo`}
                         fallbackSrc={member.fallback || '/assets/executive.png'}
                         width={300}
